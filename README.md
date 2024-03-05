@@ -1,11 +1,8 @@
 # DPS: Diffusion Point Cloud Segmentation
 
+The goal of this project is to use diffusion model to perform affordance segmentation.
+
 ## Install
-```
-
-```
-
-## Dependency
 
 We only tested on `CUDA11.8`.
 
@@ -25,19 +22,21 @@ pip install torch==2.1.0 torchvision==0.16.0 torchaudio==2.1.0 --index-url https
 conda install -c fvcore -c iopath -c conda-forge fvcore iopath
 ```
 
-4. Install pytorch3d
+4. Install pytorch3d from source
 ```
-conda install pytorch3d -c pytorch3d
+pip install "git+https://github.com/facebookresearch/pytorch3d.git"
 ```
 
 5. Install torch_scatter.
 ```
 pip install torch_geometric
-pip install torch-scatter
-pip install torch_cluster
+pip install pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.1.0+cu118.html
 ```
 
-6. Install pytorchlightning==2.2.1
+7. Install detectron2
+```
+python -m pip install 'git+https://github.com/facebookresearch/detectron2.git'
+```
 
 7. Build code for superoint; Comment out everything before `echo "⭐ Installing FRNN"`
 

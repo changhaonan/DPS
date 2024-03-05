@@ -4,9 +4,6 @@ from __future__ import annotations
 import torch
 import torch.nn as nn
 from dps.model.network.geometric import PointTransformerNetwork, to_dense_batch, to_flat_batch, batch2offset, offset2batch, knn, PointBatchNorm, KnnTransformer, KnnTransformerDecoder
-from timm.models.layers import DropPath
-from torch.nn import TransformerDecoder, TransformerDecoderLayer
-from timm.models.vision_transformer import PatchEmbed, Attention, Mlp
 import torch.nn.functional as F
 import torch_scatter
 import math

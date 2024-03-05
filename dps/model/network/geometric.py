@@ -11,7 +11,6 @@ import einops
 from einops import rearrange
 import torch.nn as nn
 from copy import deepcopy
-import pytorch3d
 import pytorch3d.ops as p3dops
 from torch.utils.checkpoint import checkpoint
 from torch_geometric.nn.pool import voxel_grid, global_mean_pool

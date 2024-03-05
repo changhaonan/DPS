@@ -1,3 +1,5 @@
+Cython
+numpy
 pyrealsense2
 diffusers
 scikit-image
@@ -7,7 +9,7 @@ open3d
 python-box
 einops
 # timm
-cffi<=1.12.3
+# cffi<=1.12.3
 urdfpy
 networkx
 tensorboard
