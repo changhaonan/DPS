@@ -1,4 +1,4 @@
-"""Utility function for rpdiff evaluation"""
+"""Utility function for rpdiff evaluation; Converting raw file to batch file for evaluation."""
 
 import dps.utils.misc_utils as utils
 import pickle
@@ -7,11 +7,34 @@ import numpy as np
 import open3d as o3d
 from dps.utils.pcd_utils import normalize_pcd, check_collision, complete_shape
 from torch.utils.data import Dataset
+from dps.data.superpoint_tool import *
 
 
-# Utility functions
-def preprocess_input_rpdiff(target_coord, anchor_coord, target_normal=None, anchor_normal=None, **kwargs):
-    """Preprocess data for eval on RPDiff"""
+def parse_child_parent(arr):
+    pcd_dict = arr[()]
+    parent_val = pcd_dict["parent"]
+    child_val = pcd_dict["child"]
+    return parent_val, child_val
+
+
+def read_rpdiff_data(data_file):
+    raw_data = np.load(data_file, allow_pickle=True)
+    parent_pcd_s, child_pcd_s = parse_child_parent(raw_data["multi_obj_start_pcd"])
+    parent_normal_s, child_normal_s = parse_child_parent(raw_data["normals"])
+    parent_color_s, child_color_s = parse_child_parent(raw_data["colors"])
+    data = {
+        "target_coord": child_pcd_s,
+        "target_normal": child_normal_s,
+        "target_color": child_color_s,
+        "anchor_coord": parent_pcd_s,
+        "anchor_normal": parent_normal_s,
+        "anchor_color": parent_color_s,
+    }
+    return data
+
+
+def reorient_pcd(target_coord, anchor_coord, target_normal=None, anchor_normal=None, **kwargs):
+    """Reorient the object"""
     # Build o3d object
     target_pcd_o3d = o3d.geometry.PointCloud()
     target_pcd_o3d.points = o3d.utility.Vector3dVector(target_coord)
@@ -53,17 +76,6 @@ def preprocess_input_rpdiff(target_coord, anchor_coord, target_normal=None, anch
     anchor_pcd_o3d.transform(np.linalg.inv(anchor_pose))
     target_pcd_o3d.transform(np.linalg.inv(target_pose))
 
-    # Normalize pcd
-    do_normalize = kwargs.get("do_normalize", False)
-    if do_normalize:
-        target_pcd_o3d, anchor_pcd_o3d, _, scale_xyz = normalize_pcd(target_pcd_o3d, anchor_pcd_o3d)
-    else:
-        scale_xyz = 1.0
-
-    # Downsample the point cloud
-    grid_size = kwargs.get("grid_size", 0.01)
-    anchor_pcd_o3d = anchor_pcd_o3d.voxel_down_sample(voxel_size=grid_size)
-    target_pcd_o3d = target_pcd_o3d.voxel_down_sample(voxel_size=grid_size)
     # Compute normal
     if target_normal is None:
         target_pcd_o3d.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
@@ -79,45 +91,12 @@ def preprocess_input_rpdiff(target_coord, anchor_coord, target_normal=None, anch
     data = {
         "target_coord": target_coord,
         "anchor_coord": anchor_coord,
+        "target_normal": target_normal,
+        "anchor_normal": anchor_normal,
         "anchor_pose": np.linalg.inv(anchor_pose),
         "target_pose": np.linalg.inv(target_pose),
-        "scale_xyz": scale_xyz,
     }
     return data
-
-
-def load_superpoint_rpdiff(data: dict, superpoint_path: str, f_keys: list = ["planarity", "linearity", "verticality", "scattering"]):
-    """Load superpoint file from file for RPDiff"""
-    superpoint_data = np.load(superpoint_path, allow_pickle=True)["data"]
-    c_superpoint_data = superpoint_data["child"]
-    p_superpoint_data = superpoint_data["parent"]
-
-    # Assemble data
-    anchor_coord = p_superpoint_data["pos"]
-    anchor_normal = p_superpoint_data["normal"]
-    anchor_feat = []
-    for f_key in f_keys:
-        anchor_feat.append(p_superpoint_data[f_key])
-    anchor_feat = np.concatenate(anchor_feat, axis=-1)
-    anchor_super_index = np.vstack(p_superpoint_data["super_index"]).T
-    target_coord = c_superpoint_data["pos"]
-    target_normal = c_superpoint_data["normal"]
-    target_feat = []
-    for f_key in f_keys:
-        target_feat.append(c_superpoint_data[f_key])
-    target_feat = np.concatenate(target_feat, axis=-1)
-    target_super_index = np.vstack(c_superpoint_data["super_index"]).T
-    tmorp_data = {
-        "target_coord": target_coord,
-        "target_normal": target_normal,
-        "target_feat": target_feat,
-        "target_super_index": target_super_index,
-        "anchor_coord": anchor_coord,
-        "anchor_normal": anchor_normal,
-        "anchor_feat": anchor_feat,
-        "anchor_super_index": anchor_super_index,
-    }
-    return tmorp_data
 
 
 def pose_recover_rpdiff(pred_pose: np.ndarray, crop_center: np.ndarray, data: dict):
@@ -152,23 +131,80 @@ def post_filter_rpdiff(pred_pose: np.ndarray, samples: list, collision_threshold
 
 
 ################################## Dataset ##################################
-class RpdiffWrapper:
-    """RpdiffWrapper; directly loading from raw point cloud data"""
+class RpdiffHelper:
+    """RpdiffHelper; directly loading from raw point cloud data"""
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, scale=1.0, downsample_voxel_size=0.02, batch_size: int = 8) -> None:
+        self.scale = scale
+        self.downsample_voxel_size = downsample_voxel_size
+        self.batch_size = batch_size
+        cfg = init_config(
+            overrides=[
+                "experiment=semantic/scannet.yaml",
+                "datamodule.voxel=0.03",
+                "datamodule.pcp_regularization=[0.01, 0.1]",
+                "datamodule.pcp_spatial_weight=[0.1, 0.1]",
+                "datamodule.pcp_cutoff=[10, 10]",
+                "datamodule.graph_gap=[0.2, 0.5]",
+                "datamodule.graph_chunk=[1e6, 1e5]",
+                "+net.nano=True",
+            ]
+        )
+        # Instantiate the datamodule
+        datamodule = hydra.utils.instantiate(cfg.datamodule)
+        # Initialize SuperPointTool
+        self.spt = SuperPointTool(pre_transform=datamodule.pre_transform)
 
-    def process_data(self, target_coord, anchor_coord, target_normal=None, anchor_normal=None, **kwargs):
+    def process_data(self, target_coord, anchor_coord, target_normal, anchor_normal, **kwargs):
         """Convert raw data into format for evaluation"""
+        f_keys = ["planarity", "linearity", "verticality", "scattering"]
         # First do reorientation
-        reorient_data = preprocess_input_rpdiff(target_coord, anchor_coord, target_normal, anchor_normal, **kwargs)
-        # Save data to file
-        temp_dir = kwargs.get("temp_dir", "temp")
-        pickle.dump(reorient_data, open(temp_dir + "/reorient_data.pkl", "wb"))
-        # Call superpoint script
-        superpoint_script = kwargs.get("superpoint_script", "superpoint")
-        os.system(f"python {superpoint_script} --input {temp_dir}/reorient_data.pkl --output {temp_dir}/superpoint_data.npz")
-        # Load superpoint data
-        superpoint_path = os.path.join(temp_dir, "superpoint_data.npz")
-        superpoint_data = load_superpoint_rpdiff(reorient_data, superpoint_path)
-        return superpoint_data
+        reorient_data = reorient_pcd(target_coord, anchor_coord, target_normal, anchor_normal, **kwargs)
+        # Downsample the point cloud
+        target_coord, target_color, target_normal = downsample_points(reorient_data["target_coord"], None, reorient_data["target_normal"], self.downsample_voxel_size)
+        anchor_coord, anchor_color, anchor_normal = downsample_points(reorient_data["anchor_coord"], None, reorient_data["anchor_normal"], self.downsample_voxel_size)
+        # Gen superpoint
+        anchor_superpoint = self.spt.gen_superpoint(anchor_coord, anchor_color, anchor_normal, scale=self.scale, vis=True)
+        # Complete shape
+        target_coord, target_normal = complete_shape(target_coord, strategy="bbox", vis=False)
+        target_feat = np.zeros((target_coord.shape[0], len(f_keys)), dtype=np.float32)
+
+        anchor_feat = []
+        for key in f_keys:
+            anchor_feat.append(anchor_superpoint[key])
+        anchor_feat = np.concatenate(anchor_feat, axis=-1)
+        data = {
+            "target_coord": target_coord,
+            "target_normal": target_normal,
+            "target_feat": target_feat,
+            "anchor_coord": anchor_superpoint["pos"],
+            "anchor_normal": anchor_superpoint["normal"],
+            "anchor_feat": anchor_feat,
+            "anchor_super_index": np.vstack(anchor_superpoint["super_index"]).T,
+        }
+        return self.convert_to_batch(data, self.batch_size)
+
+    def convert_to_batch(self, data: dict, batch_size: int = 1):
+        """Convert the data into batch format"""
+        target = {
+            "target_coord": [],
+            "target_normal": [],
+            "target_feat": [],
+            "anchor_coord": [],
+            "anchor_normal": [],
+            "anchor_feat": [],
+            "target_batch_index": [],
+            "anchor_batch_index": [],
+            "anchor_super_index": [],
+        }
+        for idx in range(batch_size):
+            target["target_coord"].append(data["target_coord"].astype(np.float32))
+            target["target_normal"].append(data["target_normal"].astype(np.float32))
+            target["target_feat"].append(data["target_feat"].astype(np.float32))
+            target["anchor_coord"].append(data["anchor_coord"].astype(np.float32))
+            target["anchor_normal"].append(data["anchor_normal"].astype(np.float32))
+            target["anchor_feat"].append(data["anchor_feat"].astype(np.float32))
+            target["target_batch_index"].append(np.full([len(data["target_coord"])], fill_value=idx, dtype=np.int64))
+            target["anchor_batch_index"].append(np.full([len(data["anchor_coord"])], fill_value=idx, dtype=np.int64))
+            target["anchor_super_index"].append(data["anchor_super_index"].astype(np.int64))
+        return {k: torch.from_numpy(np.concatenate(v)) for k, v in target.items()}

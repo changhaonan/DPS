@@ -353,7 +353,7 @@ class RGTModel:
             batch[key] = batch[key].to(self.lpose_transformer.device)
         do_icp = kwargs.get("do_icp", False)
         if do_icp:
-            conf_matrix, gt_corr, (pred_R, pred_t) = self.lpose_transformer.icp(batch, use_repulse=True)
+            conf_matrix, gt_corr, (pred_R, pred_t) = self.lpose_transformer.icp(batch, use_repulse=False)
         else:
             conf_matrix, gt_corr, (pred_R, pred_t) = self.lpose_transformer(batch)
         if vis:

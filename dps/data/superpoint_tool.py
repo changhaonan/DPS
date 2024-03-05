@@ -68,6 +68,8 @@ def downsample_points(points, colors, normals, voxel_size: float = 0.03):
     points = pcd.point["positions"].numpy()
     if colors is not None:
         colors = pcd.point["colors"].numpy()
+    else:
+        colors = np.zeros_like(points).astype(np.uint8)
     if normals is not None:
         normals = pcd.point["normals"].numpy()
     return points, colors, normals

@@ -16,16 +16,8 @@ from dps.model.rgt_model import RGTModel
 from detectron2.config import LazyConfig
 from torch.utils.data.dataset import random_split
 from dps.utils.dps_utils import build_rpdiff_dataset
-from dps.utils.rpdiff_utils import preprocess_input_rpdiff
+from dps.utils.rpdiff_utils import RpdiffHelper, read_rpdiff_data
 import random
-
-
-# Read data
-def parse_child_parent(arr):
-    pcd_dict = arr[()]
-    parent_val = pcd_dict["parent"]
-    child_val = pcd_dict["child"]
-    return parent_val, child_val
 
 
 if __name__ == "__main__":
@@ -61,6 +53,14 @@ if __name__ == "__main__":
     train_data_loader = torch.utils.data.DataLoader(train_dataset, batch_size=seg_cfg.DATALOADER.BATCH_SIZE, shuffle=True, num_workers=act_cfg.DATALOADER.NUM_WORKERS, collate_fn=PcdPairCollator())
     val_data_loader = torch.utils.data.DataLoader(val_dataset, batch_size=seg_cfg.DATALOADER.BATCH_SIZE, shuffle=False, num_workers=act_cfg.DATALOADER.NUM_WORKERS, collate_fn=PcdPairCollator())
 
+    # Raw data
+    use_raw_data = True
+    raw_data_dir = "/home/harvey/Data/rpdiff_V3"
+    raw_data_dir = os.path.join(raw_data_dir, task_name)
+    raw_data_file_list = os.listdir(raw_data_dir)
+    raw_data_file_list = [os.path.join(raw_data_dir, f) for f in raw_data_file_list]
+    rpdiff_helper = RpdiffHelper(downsample_voxel_size=seg_cfg.PREPROCESS.GRID_SIZE, batch_size=seg_cfg.DATALOADER.BATCH_SIZE)
+
     # Build segmentation model
     net_name = seg_cfg.MODEL.NOISE_NET.NAME
     net_init_args = seg_cfg.MODEL.NOISE_NET.INIT_ARGS[net_name]
@@ -93,13 +93,30 @@ if __name__ == "__main__":
 
     # Testing raw material
     for i in range(40):
-        batch = next(iter(val_data_loader))
+        if not use_raw_data:
+            batch = next(iter(val_data_loader))
+        else:
+            data_file = next(iter(raw_data_file_list))
+            data = read_rpdiff_data(data_file)
+            batch = rpdiff_helper.process_data(target_coord=data["target_coord"], target_normal=data["target_normal"], anchor_coord=data["anchor_coord"], anchor_normal=data["anchor_normal"])
         if i < 20:
             continue
         # Perform segmentation
         check_batch_idx = 1
         pred_anchor_label, anchor_coord, anchor_normal, anchor_feat = seg_model.predict(batch=batch, check_batch_idx=check_batch_idx, vis=False)
         seg_list = seg_model.seg_and_rank(anchor_coord, pred_anchor_label, normal=anchor_normal, feat=anchor_feat, crop_strategy="bbox")
+
+        # DEBUG: visualize the segmentation result
+        anchor_pcd = o3d.geometry.PointCloud()
+        anchor_pcd.points = o3d.utility.Vector3dVector(anchor_coord[check_batch_idx, ...])
+        anchor_pcd.normals = o3d.utility.Vector3dVector(anchor_normal[check_batch_idx, ...])
+        anchor_pcd.paint_uniform_color([0, 1, 0])
+        for seg in seg_list:
+            pcd = o3d.geometry.PointCloud()
+            pcd.points = o3d.utility.Vector3dVector(seg["coord"])
+            pcd.normals = o3d.utility.Vector3dVector(seg["normal"])
+            origin = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1)
+            o3d.visualization.draw_geometries([anchor_pcd, pcd, origin])
 
         # Prepare data
         target_batch_idx = batch["target_batch_index"]
@@ -119,7 +136,7 @@ if __name__ == "__main__":
         # Move anchor to center
         anchor_center = np.mean(anchor_coord, axis=0)
         anchor_coord -= anchor_center
-        for k in range(2):
+        for k in range(3):
             print(f"Batch {i}, Iteration {k}...")
             if k != 0:
                 do_icp = True

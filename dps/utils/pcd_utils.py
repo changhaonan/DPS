@@ -80,7 +80,7 @@ def visualize_point_pyramid(pos: np.ndarray | torch.Tensor, normal: np.ndarray |
         o3d.visualization.draw_geometries([pcd])
 
 
-def create_box_point(center, extent, R, density=10):
+def create_box_point(center, extent, R, step=0.01):
     """
     Create a dense point cloud for a rotated 3D bounding box.
 
@@ -97,9 +97,9 @@ def create_box_point(center, extent, R, density=10):
     Cx, Cy, Cz = center
 
     # Calculate the number of points to generate based on the density
-    num_points_L = int(L * density)
-    num_points_W = int(W * density)
-    num_points_H = int(H * density)
+    num_points_L = np.ceil(L / step).astype(int)
+    num_points_W = np.ceil(W / step).astype(int)
+    num_points_H = np.ceil(H / step).astype(int)
 
     # Generate grid points
     x = np.linspace(-L / 2, L / 2, num_points_L)
@@ -139,8 +139,9 @@ def complete_shape(coord: np.ndarray, padding: float = 0.1, strategy: str = "bbo
         pcd = o3d.geometry.PointCloud()
         pcd.points = o3d.utility.Vector3dVector(coord)
         bbox = pcd.get_minimal_oriented_bounding_box()
-        density = kwargs.get("density", 100)
-        box_points = create_box_point(bbox.center, bbox.extent, bbox.R, density=density)
+        step = kwargs.get("step", 0.01)
+        box_extent = np.array(bbox.extent) * (1 + padding)
+        box_points = create_box_point(bbox.center, box_extent, bbox.R, step=step)
         box_pcd = o3d.geometry.PointCloud()
         box_pcd.points = o3d.utility.Vector3dVector(box_points)
         # compute normal

@@ -74,3 +74,4 @@ You need to install `pytorch3d`, `superpoint`.
 - [ ] Fix the normal for shape-completion.
 - [ ] Link the system with rpdiff pipeline.
 - [ ] Add training for real object.
+- [ ] Improving the bbox points.
