@@ -1,0 +1,42 @@
+pyrealsense2
+diffusers
+scikit-image
+# lightning
+wandb
+open3d
+python-box
+einops
+# timm
+cffi<=1.12.3
+urdfpy
+networkx
+tensorboard
+easydict
+Ninja
+future
+pillow
+PyYAML
+jupyterlab
+pandas
+configargparse
+ipython
+tqdm
+matplotlib
+plotly
+ipykernel
+# torchmetrics[detection]
+plyfile
+h5py
+colorhash
+seaborn
+numba
+# pytorch-lightning
+pyrootutils
+hydra-core
+hydra-colorlog
+hydra-submitit-launcher
+rich
+# torch_tb_profiler
+gdown
+ipyfilechooser
+opencv-python
