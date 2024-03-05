@@ -107,6 +107,7 @@ MODEL = dict(
     SAMPLE_SIZE=64,
     SAMPLE_STRATEGY="grid",  # random, grid
     VALID_CROP_THRESHOLD=0.5,
+    USE_REPULSE=True,
 )
 LOGGER = dict(
     PROJECT="tns",

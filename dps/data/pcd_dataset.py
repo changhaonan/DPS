@@ -25,15 +25,6 @@ import open3d as o3d
 from sklearn.neighbors import NearestNeighbors
 
 
-def compute_corr_radius(pcd1: np.ndarray, pcd2: np.ndarray, radius: float = 0.1):
-    """Compute the correspondence matrix between two point clouds with radius
-    Correspondence matrix is a binary matrix, where each row represents the correspondence of a point in pcd1 to pcd2; nearest & within the radius is 1, otherwise 0.
-    """
-    dist_matrix = np.linalg.norm(pcd1[:, None, :3] - pcd2[None, :, :3], axis=-1)
-    corr_1to2 = np.where(dist_matrix <= radius)
-    return np.stack([corr_1to2[0], corr_1to2[1]], axis=-1)
-
-
 class PcdPairDataset(Dataset):
     """Dataset definition for point cloud like data."""
 
@@ -280,7 +271,7 @@ class PcdPairDataset(Dataset):
         # Compute corr
         target_pose_mat = utils.pose9d_to_mat(target_pose, rot_axis=self.rot_axis)
         target_coord_goal = (target_pose_mat[:3, :3] @ target_coord.T).T + target_pose_mat[:3, 3]
-        corr = compute_corr_radius(target_coord_goal, anchor_coord, radius=self.corr_radius)
+        corr = pcd_utils.compute_corr_radius(target_coord_goal, anchor_coord, radius=self.corr_radius)
 
         # # # # DEBUG: check corr
         # pcd = o3d.geometry.PointCloud()

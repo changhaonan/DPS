@@ -26,16 +26,14 @@ def build_rpdiff_dataset(root_path, cfg):
     add_colors = cfg.DATALOADER.ADD_COLORS
     corr_radius = cfg.DATALOADER.CORR_RADIUS
     # Load dataset & data loader
-    if cfg.ENV.GOAL_TYPE == "multimodal":
-        dataset_folder = "data_multimodal"
-    elif "real" in cfg.ENV.GOAL_TYPE:
+    if "real" in cfg.ENV.GOAL_TYPE:
         dataset_folder = "data_real"
     elif "rpdiff" in cfg.ENV.GOAL_TYPE:
         dataset_folder = "data_rpdiff"
     elif "superpoint" in cfg.ENV.GOAL_TYPE:
         dataset_folder = "data_superpoint"
     else:
-        dataset_folder = "data_faster"
+        raise ValueError(f"Unknown goal type: {cfg.ENV.GOAL_TYPE}")
 
     # Get different split
     splits = ["train", "val", "test"]

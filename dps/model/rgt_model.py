@@ -21,6 +21,7 @@ import time
 from dps.model.network.geometric import batch2offset, to_dense_batch, offset2batch, to_flat_batch
 from dps.model.network.rigpose_transformer import RigPoseTransformer
 import dps.utils.misc_utils as utils
+import dps.utils.pcd_utils as pcd_utils
 from dps.utils.pcd_utils import normalize_pcd, check_collision
 import torch_scatter
 import wandb
@@ -44,6 +45,8 @@ class LRigPoseTransformer(L.LightningModule):
         self.batch_size = cfg.DATALOADER.BATCH_SIZE
         self.valid_crop_threshold = cfg.MODEL.VALID_CROP_THRESHOLD
         self.rot_axis = cfg.DATALOADER.AUGMENTATION.ROT_AXIS
+        self.corr_radius = 0.02
+        self.dot_threhold = -0.8
         self.sample_batch = None
 
     def training_step(self, batch, batch_idx):
@@ -140,10 +143,16 @@ class LRigPoseTransformer(L.LightningModule):
         # Biasing coord with normal
         use_repulse = kwargs.get("use_repulse", False)
         if use_repulse:
+            batch_target_coord, target_mask = to_dense_batch(target_coord, target_batch_idx)
+            batch_anchor_coord, anchor_mask = to_dense_batch(anchor_coord, anchor_batch_idx)
+            batch_target_normal = to_dense_batch(target_normal, target_batch_idx)[0]
+            batch_anchor_normal = to_dense_batch(anchor_normal, anchor_batch_idx)[0]
             # Using Liamm's estimate
-            c = 0.1 * (target_coord.max() - target_coord.min())
-            target_coord = target_coord + c * target_normal
-            anchor_coord = anchor_coord + c * anchor_normal
+            c = 0.1 * torch.norm(torch.max(batch_target_coord, dim=1)[0] - torch.min(batch_target_coord, dim=1)[0], dim=1)
+            batch_target_coord = batch_target_coord + c[:, None, None] * batch_target_normal
+            batch_anchor_coord = batch_anchor_coord + c[:, None, None] * batch_anchor_normal
+            target_coord = to_flat_batch(batch_target_coord, target_mask)[0]
+            anchor_coord = to_flat_batch(batch_anchor_coord, anchor_mask)[0]
 
         R, t, condition = self.pose_transformer.dual_softmax_reposition.arun(
             conf_matrix=conf_matrix, coord_a=target_coord, coord_b=anchor_coord, batch_index_a=offset2batch(target_offset), batch_index_b=offset2batch(anchor_offset)
@@ -154,6 +163,54 @@ class LRigPoseTransformer(L.LightningModule):
             t = torch.bmm(R, prev_t[:, :, None]).squeeze(-1) + t
             R = torch.bmm(R, prev_R)
         return conf_matrix, gt_corr_matrix, (R, t)
+
+    def icp(self, batch, use_repulse: bool = False):
+        """Perform local ICP for fine-tuning pose"""
+        # Assemble input
+        target_coord = batch["target_coord"]
+        target_normal = batch["target_normal"]
+        target_batch_idx = batch["target_batch_index"]
+        target_offset = batch2offset(target_batch_idx)
+        anchor_coord = batch["anchor_coord"]
+        anchor_normal = batch["anchor_normal"]
+        anchor_batch_idx = batch["anchor_batch_index"]
+        anchor_offset = batch2offset(anchor_batch_idx)
+        prev_R = batch.get("prev_R", None)
+        prev_t = batch.get("prev_t", None)
+
+        if prev_R is not None and prev_t is not None:
+            target_coord, target_mask = to_dense_batch(target_coord, target_batch_idx)
+            target_normal, _ = to_dense_batch(target_normal, target_batch_idx)
+            target_coord, target_normal = self.pose_transformer.reposition(target_coord, prev_R, prev_t, target_normal)
+            target_coord = to_flat_batch(target_coord, target_mask)[0]
+            target_normal = to_flat_batch(target_normal, target_mask)[0]
+
+        # Perform ICP
+        batch_target_coord = to_dense_batch(target_coord, target_batch_idx)[0]
+        batch_anchor_coord = to_dense_batch(anchor_coord, anchor_batch_idx)[0]
+        batch_target_normal = to_dense_batch(target_normal, target_batch_idx)[0]
+        batch_anchor_normal = to_dense_batch(anchor_normal, anchor_batch_idx)[0]
+        icp_corr = pcd_utils.compute_batch_corr_radius(batch_target_coord, batch_anchor_coord, batch_target_normal, batch_anchor_normal, radius=self.corr_radius, dot_threshold=self.dot_threhold)
+        if use_repulse:
+            batch_target_coord, target_mask = to_dense_batch(target_coord, target_batch_idx)
+            batch_anchor_coord, anchor_mask = to_dense_batch(anchor_coord, anchor_batch_idx)
+            batch_target_normal = to_dense_batch(target_normal, target_batch_idx)[0]
+            batch_anchor_normal = to_dense_batch(anchor_normal, anchor_batch_idx)[0]
+            # Using Liamm's estimate
+            c = 0.03 * torch.norm(torch.max(batch_target_coord, dim=1)[0] - torch.min(batch_target_coord, dim=1)[0], dim=1)
+            batch_target_coord = batch_target_coord + c[:, None, None] * batch_target_normal
+            batch_anchor_coord = batch_anchor_coord + c[:, None, None] * batch_anchor_normal
+            target_coord = to_flat_batch(batch_target_coord, target_mask)[0]
+            anchor_coord = to_flat_batch(batch_anchor_coord, anchor_mask)[0]
+
+        R, t, condition = self.pose_transformer.dual_softmax_reposition.arun(
+            conf_matrix=icp_corr, coord_a=target_coord, coord_b=anchor_coord, batch_index_a=offset2batch(target_offset), batch_index_b=offset2batch(anchor_offset)
+        )
+        # Combine with previous pose
+        if prev_R is not None and prev_t is not None:
+            t = torch.bmm(R, prev_t[:, :, None]).squeeze(-1) + t
+            R = torch.bmm(R, prev_R)
+        return icp_corr, None, (R, t)
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
@@ -268,7 +325,9 @@ class RGTModel:
             dataloaders=test_data_loader,
         )
 
-    def predict(self, target_coord=None, target_normal=None, target_feat=None, anchor_coord=None, anchor_normal=None, anchor_feat=None, batch=None, target_pose=None, vis: bool = False) -> Any:
+    def predict(
+        self, target_coord=None, target_normal=None, target_feat=None, anchor_coord=None, anchor_normal=None, anchor_feat=None, prev_R=None, prev_t=None, batch=None, vis: bool = False, **kwargs
+    ) -> Any:
         self.lpose_transformer.eval()
         # Assemble batch
         if batch is None:
@@ -283,6 +342,8 @@ class RGTModel:
                 "anchor_normal": anchor_normal,
                 "anchor_feat": anchor_feat,
                 "anchor_batch_index": anchor_batch_idx,
+                "prev_R": prev_R,
+                "prev_t": prev_t,
             }
             # Put to torch
             for key in batch.keys():
@@ -290,7 +351,11 @@ class RGTModel:
         # Put to device
         for key in batch.keys():
             batch[key] = batch[key].to(self.lpose_transformer.device)
-        conf_matrix, gt_corr, (pred_R, pred_t) = self.lpose_transformer(batch)
+        do_icp = kwargs.get("do_icp", False)
+        if do_icp:
+            conf_matrix, gt_corr, (pred_R, pred_t) = self.lpose_transformer.icp(batch, use_repulse=True)
+        else:
+            conf_matrix, gt_corr, (pred_R, pred_t) = self.lpose_transformer(batch)
         if vis:
             anchor_batch_idx = batch["anchor_batch_index"]
             anchor_coord = batch["anchor_coord"]

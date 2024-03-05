@@ -636,7 +636,7 @@ class DualSoftmaxReposition(nn.Module):
 
         try:
             R, t, condition = batch_arun(self._detach(coord_a_sampled), self._detach(coord_b_sampled), self._detach(w[..., None]))
-        except:  # fail to get valid solution, this usually happens at the early stage of training
+        except Exception as e:
             R = torch.eye(3)[None].repeat(bsize, 1, 1).type_as(conf_matrix).to(dev)
             t = torch.zeros(3, 1)[None].repeat(bsize, 1, 1).type_as(conf_matrix).to(dev)
             condition = torch.zeros(bsize).type_as(conf_matrix)

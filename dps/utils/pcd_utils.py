@@ -152,3 +152,52 @@ def complete_shape(coord: np.ndarray, padding: float = 0.1, strategy: str = "bbo
         return np.asarray(box_pcd.points), np.asarray(box_pcd.normals)
     else:
         raise ValueError(f"Invalid strategy: {strategy}")
+
+
+def compute_corr_radius(pcd1: np.ndarray | torch.Tensor, pcd2: np.ndarray | torch.Tensor, radius: float = 0.1):
+    """Compute the correspondence matrix between two point clouds with radius
+    Correspondence matrix is a binary matrix, where each row represents the correspondence of a point in pcd1 to pcd2; nearest & within the radius is 1, otherwise 0.
+    """
+    if isinstance(pcd1, torch.Tensor):
+        pcd1 = pcd1.cpu().numpy()
+    if isinstance(pcd2, torch.Tensor):
+        pcd2 = pcd2.cpu().numpy()
+
+    dist_matrix = np.linalg.norm(pcd1[:, None, :3] - pcd2[None, :, :3], axis=-1)
+    corr_1to2 = np.where(dist_matrix <= radius)
+    return np.stack([corr_1to2[0], corr_1to2[1]], axis=-1)
+
+
+def compute_batch_corr_radius(pcd1, pcd2, normal1=None, normal2=None, radius=0.1, dot_threshold=-0.9):
+    """Vectorized computation of the correspondence matrix for batches of point clouds.
+    Note: This function returns the distance matrices for each batch, from which correspondences can be derived.
+    """
+    is_tensor = isinstance(pcd1, torch.Tensor)
+    if isinstance(pcd1, torch.Tensor):
+        pcd1 = pcd1.cpu().numpy()
+    if isinstance(pcd2, torch.Tensor):
+        pcd2 = pcd2.cpu().numpy()
+    if isinstance(normal1, torch.Tensor):
+        normal1 = normal1.cpu().numpy()
+    if isinstance(normal2, torch.Tensor):
+        normal2 = normal2.cpu().numpy()
+    # Calculate the squared distances between all pairs (for each batch)
+    # Expanding dimensions to support broadcasting
+    dist_sq = np.sum((pcd1[:, :, np.newaxis, :] - pcd2[:, np.newaxis, :, :]) ** 2, axis=-1)
+
+    if (normal1 is not None) and (normal2 is not None):
+        normal_dot = np.sum(normal1[:, :, np.newaxis, :] * normal2[:, np.newaxis, :, :], axis=-1)
+    else:
+        normal_dot = np.ones((pcd1.shape[0], pcd1.shape[1], pcd2.shape[1])) * dot_threshold
+    # Convert squared distances to a binary correspondence matrix within the specified radius
+    # This step essentially checks if distances are within the square of the radius to avoid sqrt computation
+    if dot_threshold > 0:
+        # Filter out correspondences with normals in opposite directions
+        corr_matrix = np.logical_and(dist_sq <= radius**2, normal_dot >= dot_threshold).astype(np.float32)
+    else:
+        # Filter out correspondences with normals in the same direction
+        corr_matrix = np.logical_and(dist_sq <= radius**2, normal_dot <= dot_threshold).astype(np.float32)
+
+    if is_tensor:
+        corr_matrix = torch.from_numpy(corr_matrix)
+    return corr_matrix
