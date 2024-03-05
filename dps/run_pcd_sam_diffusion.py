@@ -9,7 +9,7 @@ from dps.data.pcd_datalodaer import PcdPairCollator
 from dps.model.network.pcd_sam_noise_net import PcdSAMNoiseNet
 from dps.model.pcdd_sam_model import PCDDModel
 from detectron2.config import LazyConfig
-from dps.utils.dps_utils import build_dmorp_dataset, build_dmorp_model
+from dps.utils.dps_utils import build_rpdiff_dataset
 import random
 
 
@@ -36,7 +36,7 @@ if __name__ == "__main__":
     
     cfg.DATALOADER.BATCH_SIZE = 32
     # Load dataset & data loader
-    train_dataset, val_dataset, test_dataset = build_dmorp_dataset(root_path, cfg)
+    train_dataset, val_dataset, test_dataset = build_rpdiff_dataset(root_path, cfg)
     train_data_loader = torch.utils.data.DataLoader(train_dataset, batch_size=cfg.DATALOADER.BATCH_SIZE, shuffle=True, num_workers=cfg.DATALOADER.NUM_WORKERS, collate_fn=PcdPairCollator())
     val_data_loader = torch.utils.data.DataLoader(val_dataset, batch_size=cfg.DATALOADER.BATCH_SIZE, shuffle=False, num_workers=cfg.DATALOADER.NUM_WORKERS, collate_fn=PcdPairCollator())
 

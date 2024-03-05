@@ -3,7 +3,7 @@ from detectron2.config import LazyConfig
 from dps.data.pcd_dataset import PcdPairDataset
 
 
-def build_dmorp_dataset(root_path, cfg):
+def build_rpdiff_dataset(root_path, cfg):
     task_name = cfg.ENV.TASK_NAME
     pcd_size = cfg.MODEL.PCD_SIZE
     is_elastic_distortion = cfg.DATALOADER.AUGMENTATION.IS_ELASTIC_DISTORTION
@@ -27,17 +27,15 @@ def build_dmorp_dataset(root_path, cfg):
     corr_radius = cfg.DATALOADER.CORR_RADIUS
     # Load dataset & data loader
     if cfg.ENV.GOAL_TYPE == "multimodal":
-        dataset_folder = "dmorp_multimodal"
+        dataset_folder = "data_multimodal"
     elif "real" in cfg.ENV.GOAL_TYPE:
-        dataset_folder = "dmorp_real"
-    elif "struct" in cfg.ENV.GOAL_TYPE:
-        dataset_folder = "dmorp_struct"
+        dataset_folder = "data_real"
     elif "rpdiff" in cfg.ENV.GOAL_TYPE:
-        dataset_folder = "dmorp_rpdiff"
+        dataset_folder = "data_rpdiff"
     elif "superpoint" in cfg.ENV.GOAL_TYPE:
-        dataset_folder = "dmorp_superpoint"
+        dataset_folder = "data_superpoint"
     else:
-        dataset_folder = "dmorp_faster"
+        dataset_folder = "data_faster"
 
     # Get different split
     splits = ["train", "val", "test"]
@@ -54,7 +52,7 @@ def build_dmorp_dataset(root_path, cfg):
     volume_augmentations_path = os.path.join(root_path, "config", volume_augmentation_file) if volume_augmentation_file is not None else None
     train_dataset = PcdPairDataset(
         data_file_list=[data_file_dict["train"]],
-        dataset_name="dmorp",
+        dataset_name="data",
         add_colors=add_colors,
         add_normals=add_normals,
         is_elastic_distortion=is_elastic_distortion,
@@ -77,7 +75,7 @@ def build_dmorp_dataset(root_path, cfg):
     )
     val_dataset = PcdPairDataset(
         data_file_list=[data_file_dict["val"]],
-        dataset_name="dmorp",
+        dataset_name="data",
         add_colors=add_colors,
         add_normals=add_normals,
         is_elastic_distortion=is_elastic_distortion,
@@ -100,7 +98,7 @@ def build_dmorp_dataset(root_path, cfg):
     )
     test_dataset = PcdPairDataset(
         data_file_list=[data_file_dict["test"]],
-        dataset_name="dmorp",
+        dataset_name="data",
         add_colors=add_colors,
         add_normals=add_normals,
         is_elastic_distortion=is_elastic_distortion,

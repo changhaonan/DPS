@@ -55,13 +55,13 @@ if __name__ == "__main__":
     import os
     from dps.data.pcd_dataset import PcdPairDataset
 
-    dataset_name = "dmorp_rdiff"
+    dataset_name = "data_rdiff"
     root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     split = "test"
     # Test data loader
     dataset = PcdPairDataset(
         data_file_list=[f"{root_dir}/test_data/{dataset_name}/diffusion_dataset_0_2048_s25000-c1-r0.5_{split}.pkl"],
-        dataset_name="dmorp",
+        dataset_name="data",
         add_colors=True,
         add_normals=True,
         is_elastic_distortion=False,

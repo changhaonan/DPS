@@ -179,13 +179,13 @@ def build_dataset_real(data_path, cfg, data_id: int = 0, vis: bool = False, filt
                 visualize_pcd_with_open3d(tmorp_data["target"], tmorp_data["fixed"], tmorp_data["transform"], camera_pose=tmorp_data["cam_pose"])
             dtset.append(tmorp_data)
     print("Len of dtset:", len(dtset))
-    print(f"Saving dataset to {os.path.join(root_dir, 'test_data', 'dmorp_real')}...")
+    print(f"Saving dataset to {os.path.join(root_dir, 'test_data', 'data_real')}...")
     # Save the dtset into a .pkl file
     if filter_key is not None:
-        with open(os.path.join(root_dir, "test_data", "dmorp_real", f"diffusion_dataset_{data_id}_{cfg.MODEL.PCD_SIZE}_{cfg.MODEL.DATASET_CONFIG}_{filter_key}.pkl"), "wb") as f:
+        with open(os.path.join(root_dir, "test_data", "data_real", f"diffusion_dataset_{data_id}_{cfg.MODEL.PCD_SIZE}_{cfg.MODEL.DATASET_CONFIG}_{filter_key}.pkl"), "wb") as f:
             pickle.dump(dtset, f)
     else:
-        with open(os.path.join(root_dir, "test_data", "dmorp_real", f"diffusion_dataset_{data_id}_{cfg.MODEL.PCD_SIZE}_{cfg.MODEL.DATASET_CONFIG}.pkl"), "wb") as f:
+        with open(os.path.join(root_dir, "test_data", "data_real", f"diffusion_dataset_{data_id}_{cfg.MODEL.PCD_SIZE}_{cfg.MODEL.DATASET_CONFIG}.pkl"), "wb") as f:
             pickle.dump(dtset, f)
     print("Done!")
 
@@ -331,10 +331,10 @@ def build_dataset_rpdiff(data_dir, cfg, task_name: str, vis: bool = False, do_sc
 
     print("Len of dtset:", len(data_dict["train"]), len(data_dict["val"]), len(data_dict["test"]))
     # Save the dtset into a .pkl file
-    export_dir = os.path.join(root_dir, "test_data", "dmorp_rpdiff", task_name)
+    export_dir = os.path.join(root_dir, "test_data", "data_rpdiff", task_name)
     os.makedirs(export_dir, exist_ok=True)
     for split, split_list in split_dict.items():
-        print(f"Saving dataset to {os.path.join(root_dir, 'test_data', 'dmorp_rpdiff')}...")
+        print(f"Saving dataset to {os.path.join(root_dir, 'test_data', 'data_rpdiff')}...")
         with open(os.path.join(export_dir, f"diffusion_dataset_{cfg.MODEL.PCD_SIZE}_{cfg.MODEL.DATASET_CONFIG}_{split}.pkl"), "wb") as f:
             pickle.dump(data_dict[split], f)
 
@@ -473,10 +473,10 @@ def build_dataset_superpoint(data_dir, cfg, task_name: str, vis: bool = False, f
                 break
     print("Len of dtset:", len(data_dict["train"]), len(data_dict["val"]), len(data_dict["test"]))
     # Save the dtset into a .pkl file
-    export_dir = os.path.join(root_dir, "test_data", "dmorp_superpoint", task_name)
+    export_dir = os.path.join(root_dir, "test_data", "data_superpoint", task_name)
     os.makedirs(export_dir, exist_ok=True)
     for split, split_list in split_dict.items():
-        print(f"Saving dataset to {os.path.join(root_dir, 'test_data', 'dmorp_superpoint')}...")
+        print(f"Saving dataset to {os.path.join(root_dir, 'test_data', 'data_superpoint')}...")
         with open(os.path.join(export_dir, f"diffusion_dataset_{cfg.MODEL.PCD_SIZE}_{cfg.MODEL.DATASET_CONFIG}_{split}.pkl"), "wb") as f:
             pickle.dump(data_dict[split], f)
 
@@ -508,7 +508,7 @@ if __name__ == "__main__":
 
     dtset = []
     if args.data_type == "real":
-        data_path = os.path.join(root_dir, "test_data", "dmorp_real", f"{0:06d}")
+        data_path = os.path.join(root_dir, "test_data", "data_real", f"{0:06d}")
         build_dataset_real(data_path, cfg, data_id=0, vis=vis, filter_key=filter_key)
     elif args.data_type == "rpdiff":
         build_dataset_rpdiff(data_dir, cfg, task_name=task_name, vis=vis, do_scaling=do_scaling)

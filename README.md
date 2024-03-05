@@ -2,6 +2,22 @@
 
 The goal of this project is to use diffusion model to perform affordance segmentation.
 
+## Generate data
+
+1. Run generate superpoint
+
+```
+python dps/scripts/gen_superpoint.py
+```
+
+2. Run preprocess
+
+```
+python preprocess_data.py
+```
+
+## Training
+
 ## Install
 
 We only tested on `CUDA11.8`.

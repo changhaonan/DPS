@@ -225,7 +225,7 @@ class RGTModel:
 
     def train(self, num_epochs: int, train_data_loader, val_data_loader, save_path: str):
         # Checkpoint callback
-        checkpoint_callback = ModelCheckpoint(monitor="val_loss", dirpath=os.path.join(save_path, "checkpoints"), filename="RTmorp_model-{epoch:02d}-{val_loss:.2f}", save_top_k=3, mode="min")
+        checkpoint_callback = ModelCheckpoint(monitor="val_loss", dirpath=os.path.join(save_path, "checkpoints"), filename="RGT_model-{epoch:02d}-{val_loss:.4f}", save_top_k=3, mode="min")
         # Trainer
         # If not mac, using ddp_find_unused_parameters_true
         strategy = "ddp_find_unused_parameters_true" if os.uname().sysname != "Darwin" else "auto"
