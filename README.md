@@ -68,3 +68,7 @@ You need to install `pytorch3d`, `superpoint`.
 - [Superpoint] (https://github.com/drprojects/superpoint_transformer)
 
 8. Install detectron2.
+
+## TODO
+
+- [ ] Fix the normal for shape-completion.

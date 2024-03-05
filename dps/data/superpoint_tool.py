@@ -78,7 +78,7 @@ class SuperPointTool:
         self.pre_transform = pre_transform
         self.kwargs = kwargs
 
-    def wrap_data(self, points: np.ndarray, colors: np.ndarray, normals: np.ndarray):
+    def wrap_data(self, points: np.ndarray, colors: np.ndarray, normals: np.ndarray, **kwargs):
         """Wrap data into a PyTorch tensor."""
         # label
         pos = torch.from_numpy(points).to(torch.float32)
@@ -88,7 +88,10 @@ class SuperPointTool:
         intensity = torch.from_numpy(intensity).unsqueeze(1).to(torch.float32)
         rgb = torch.from_numpy(cloud_colors).to(torch.float32)
         normals = torch.from_numpy(normals).to(torch.float32)
-        data = Data(pos=pos, intensity=intensity, rgb=rgb, raw_normal=normals)
+        custom_dict = {}
+        for k, v in kwargs.items():
+            custom_dict[f"raw_{k}"] = torch.from_numpy(v).to(torch.float32)
+        data = Data(pos=pos, intensity=intensity, rgb=rgb, raw_normal=normals, **custom_dict)
         return data
 
     def preprocess(self, data: Data):
@@ -99,11 +102,11 @@ class SuperPointTool:
             nag = NAG([data])
         return nag
 
-    def gen_superpoint(self, points: np.ndarray, colors: np.ndarray, normals: np.ndarray, scale: float = 1.0, vis: bool = False):
+    def gen_superpoint(self, points: np.ndarray, colors: np.ndarray, normals: np.ndarray, scale: float = 1.0, vis: bool = False, **kwargs):
         """Generate superpoint data from input points and colors."""
         points = points * scale  # Scale the points
 
-        data = self.wrap_data(points, colors, normals)
+        data = self.wrap_data(points, colors, normals, **kwargs)
         nag = self.preprocess(data)
 
         # Construct superpoint data for parent object
@@ -115,6 +118,9 @@ class SuperPointTool:
         linearity = nag[0].linearity.detach().cpu().numpy()
         verticality = nag[0].verticality.detach().cpu().numpy()
         scattering = nag[0].scattering.detach().cpu().numpy()
+        custom_dict = {}
+        for k, v in kwargs.items():
+            custom_dict[k] = nag[0][f"raw_{k}"].detach().cpu().numpy()
         super_index_list = []
         for i in range(nag.num_levels - 1):
             _super_index = nag[i].super_index.detach().cpu().numpy()
@@ -135,6 +141,7 @@ class SuperPointTool:
             "verticality": verticality,
             "scattering": scattering,
             "super_index": super_index_list,
+            **custom_dict,
         }
         if vis:
             # Show the superpoint data

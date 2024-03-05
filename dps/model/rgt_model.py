@@ -95,7 +95,7 @@ class LRigPoseTransformer(L.LightningModule):
         loss = self.pose_transformer.dual_softmax_reposition.compute_matching_loss(conf_matrix, gt_matrix=gt_corr)
         return loss
 
-    def forward(self, batch) -> Any:
+    def forward(self, batch, **kwargs) -> Any:
         # Assemble input
         target_coord = batch["target_coord"]
         target_normal = batch["target_normal"]
@@ -137,6 +137,14 @@ class LRigPoseTransformer(L.LightningModule):
             gt_corr_matrix = None
 
         # Output estimation for evaluation
+        # Biasing coord with normal
+        use_repulse = kwargs.get("use_repulse", False)
+        if use_repulse:
+            # Using Liamm's estimate
+            c = 0.1 * (target_coord.max() - target_coord.min())
+            target_coord = target_coord + c * target_normal
+            anchor_coord = anchor_coord + c * anchor_normal
+
         R, t, condition = self.pose_transformer.dual_softmax_reposition.arun(
             conf_matrix=conf_matrix, coord_a=target_coord, coord_b=anchor_coord, batch_index_a=offset2batch(target_offset), batch_index_b=offset2batch(anchor_offset)
         )

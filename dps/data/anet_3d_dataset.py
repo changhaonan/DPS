@@ -3,10 +3,10 @@
 
 from __future__ import annotations
 from torch.utils.data import Dataset
+import numpy as np
 import os
 import pickle
 import dps.utils.misc_utils as utils
-from scipy.spatial.transform import Rotation as R
 from scipy.spatial.transform import Rotation as R
 
 
@@ -17,12 +17,10 @@ class ANet3DDataset(Dataset):
         self,
         data_file: str,
         dataset_mode: str = "train",
-        add_colors: bool = False,
         add_normals: bool = False,
         **kwargs,
     ):
         # Set parameters
-        self.add_colors = add_colors
         self.add_normals = add_normals
         self.dataset_mode = dataset_mode
 
@@ -44,11 +42,13 @@ class ANet3DDataset(Dataset):
     def parse_pcd_data(self, batch_idx):
         """Parse data from the dataset."""
         pcd = self._data[batch_idx]["full_shape"]["coordinate"]
-        # expanded_data = np.zeros((data["full_shape"]["coordinate"].shape[0], 3 + len(self.affordances)))
-        # for affordance in self.affordances:
-        #     aff_points = np.asarray(np.where(data["full_shape"]["label"][affordance] != 0)[0])
         affordance_dict = self._data[batch_idx]["full_shape"]["label"]
-        return pcd, affordance_dict, self._data[batch_idx]["semantic class"]
+        label = np.zeros([pcd.shape[0], len(self.affordances)], dtype=np.float32)
+        for i, affordance in enumerate(self.affordances):
+            if affordance in affordance_dict:
+                label[:, i] = affordance_dict[affordance]
+        data = {"coord": pcd, "label": label, "semantic class": self._data[batch_idx]["semantic class"]}
+        return data
 
     def __len__(self):
         return len(self._data)
@@ -66,12 +66,11 @@ class ANet3DDataset(Dataset):
 
 
 if __name__ == "__main__":
-
-    dataset_name = "anet3d"
+    data_root = "/home/harvey/Data"
+    dataset_name = "Anet3D"
     dataset_type = "full_shape"
     split = "train"  # "train", "val"
-    root_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    data_file = os.path.join(root_path, "test_data", f"{dataset_name}", f"{dataset_type}_{split}_data.pkl")
+    data_file = os.path.join(data_root, f"{dataset_name}", f"{dataset_type}_{split}_data.pkl")
 
     dataset = ANet3DDataset(
         data_file=data_file,

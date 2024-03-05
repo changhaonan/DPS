@@ -8,6 +8,7 @@ import torch.nn.functional as F
 import torch_scatter
 import math
 import numpy as np
+from timm.models.vision_transformer import PatchEmbed, Attention, Mlp
 
 
 class PositionEmbeddingCoordsSine(nn.Module):
