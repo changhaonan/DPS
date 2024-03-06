@@ -1,6 +1,6 @@
 """Generate superpoint for anet3d dataset."""
 
-from dps.data.superpoint_tool import SuperPointTool, has_outlier, downsample_points, check_pcd, parse_child_parent, pose7d_to_mat
+from dps.data.superpoint_tool import SuperPointTool, has_outlier, downsample_points, visualize_superpoint, check_pcd
 import os
 import sys
 from tqdm import tqdm
@@ -20,11 +20,16 @@ import hydra
 from src.utils import init_config
 
 log = logging.getLogger(__name__)
+from detectron2.config import LazyConfig
 
 if __name__ == "__main__":
-    # Arguments
-    scale = 3.0
-    downsample_voxel_size = 0.02
+    # Parse task cfg
+    task_name = "book_in_bookshelf"
+    root_path = os.path.dirname((os.path.abspath(__file__)))
+    task_cfg_file = os.path.join(root_path, "config", f"pose_transformer_rpdiff_{task_name}.py")
+    task_cfg = LazyConfig.load(task_cfg_file)
+    scale = task_cfg.PREPROCESS.TARGET_RESCALE
+    downsample_voxel_size = task_cfg.PREPROCESS.GRID_SIZE
     # Parse the configs using hydra
     cfg = init_config(
         overrides=[
@@ -81,7 +86,7 @@ if __name__ == "__main__":
                 normals = np.array(normal)
 
                 superpoint_data = spt.gen_superpoint(points, colors, normals, scale=scale, vis=False, label=label)
-
+                # visualize_superpoint(superpoint_data)
                 # check_pcd(superpoint_data["pos"], superpoint_data["color"], superpoint_data["normal"])
                 superpoint_data["semantic"] = data["semantic class"]
                 super_point_dict[valid_data_idx] = superpoint_data

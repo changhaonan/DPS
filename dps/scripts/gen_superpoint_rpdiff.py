@@ -1,4 +1,4 @@
-from dps.data.superpoint_tool import SuperPointTool, has_outlier, downsample_points, check_pcd, parse_child_parent, pose7d_to_mat
+from dps.data.superpoint_tool import SuperPointTool, has_outlier, downsample_points, visualize_superpoint, parse_child_parent, pose7d_to_mat
 import os
 import sys
 from tqdm import tqdm
@@ -18,11 +18,16 @@ import hydra
 from src.utils import init_config
 
 log = logging.getLogger(__name__)
+from detectron2.config import LazyConfig
 
 if __name__ == "__main__":
-    # Arguments
-    scale = 1.0
-    downsample_voxel_size = 0.02
+    # Parse task cfg
+    task_name = "book_in_bookshelf"
+    root_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    task_cfg_file = os.path.join(root_path, "config", f"pose_transformer_rpdiff_{task_name}.py")
+    task_cfg = LazyConfig.load(task_cfg_file)
+    scale = task_cfg.PREPROCESS.TARGET_RESCALE
+    downsample_voxel_size = task_cfg.PREPROCESS.GRID_SIZE
     # Parse the configs using hydra
     cfg = init_config(
         overrides=[
@@ -83,19 +88,10 @@ if __name__ == "__main__":
             p_normals = np.array(parent_normal_s)
             c_normals = np.array(child_normal_s)
 
-            # # Check
-            # p_pcd = o3d.geometry.PointCloud()
-            # p_pcd.points = o3d.utility.Vector3dVector(p_points)
-            # c_pcd = o3d.geometry.PointCloud()
-            # c_pcd.points = o3d.utility.Vector3dVector(c_points)
-            # c_pcd.paint_uniform_color([0, 0, 1])
-            # o3d.visualization.draw_geometries([p_pcd, c_pcd])
-
             p_super_point_data = spt.gen_superpoint(p_points, p_colors, p_normals, scale=scale, vis=False)
             c_super_point_data = spt.gen_superpoint(c_points, c_colors, c_normals, scale=scale, vis=False)
 
-            # check_pcd(p_super_point_data["pos"], p_super_point_data["color"], p_super_point_data["normal"])
-
+            # visualize_superpoint(p_super_point_data)
             super_point_dict[data_file] = {
                 "parent": p_super_point_data,
                 "child": c_super_point_data,

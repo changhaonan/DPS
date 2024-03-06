@@ -30,8 +30,25 @@ import pickle
 import numpy as np
 from src.data import NAG, Data
 from scipy.spatial.transform import Rotation as R
+from detectron2.config import LazyConfig
 
 log = logging.getLogger(__name__)
+
+
+def visualize_superpoint(superpoint_data):
+    pos = superpoint_data["pos"]
+    normal = superpoint_data["normal"]
+    super_indexes = superpoint_data["super_index"]
+    num_color = np.max(super_indexes[0]) + 1
+    # Generate random color
+    color = np.random.rand(num_color, 3)
+    origin = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1)
+    for i, super_index in enumerate(super_indexes):
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(pos)
+        # pcd.normals = o3d.utility.Vector3dVector(normal)
+        pcd.colors = o3d.utility.Vector3dVector(color[super_index])
+        o3d.visualization.draw_geometries([pcd, origin])
 
 
 def has_outlier(points, range: float = 3.0):
@@ -107,12 +124,14 @@ class SuperPointTool:
     def gen_superpoint(self, points: np.ndarray, colors: np.ndarray, normals: np.ndarray, scale: float = 1.0, vis: bool = False, **kwargs):
         """Generate superpoint data from input points and colors."""
         points = points * scale  # Scale the points
-
+        # Move points to the origin
+        points_center = np.mean(points, axis=0)
+        points -= points_center
         data = self.wrap_data(points, colors, normals, **kwargs)
         nag = self.preprocess(data)
 
         # Construct superpoint data for parent object
-        pos = nag[0].pos.detach().cpu().numpy() / scale  # Restore to original scale
+        pos = (nag[0].pos.detach().cpu().numpy() + points_center) / scale
         color = nag[0].rgb.detach().cpu().numpy()
         normal = nag[0].raw_normal.detach().cpu().numpy()
         # normal = nag[0].normal.detach().cpu().numpy()
@@ -159,9 +178,13 @@ def parse_child_parent(arr):
 
 
 if __name__ == "__main__":
-    # Arguments
-    scale = 3.0
-    downsample_voxel_size = 0.02
+    # Parse task cfg
+    task_name = "book_in_bookshelf"
+    root_path = os.path.dirname((os.path.abspath(__file__)))
+    task_cfg_file = os.path.join(root_path, "config", f"pose_transformer_rpdiff_{task_name}.py")
+    task_cfg = LazyConfig.load(task_cfg_file)
+    scale = task_cfg.PREPROCESS.TARGET_RESCALE
+    downsample_voxel_size = task_cfg.PREPROCESS.GRID_SIZE
     # Parse the configs using hydra
     cfg = init_config(
         overrides=[
@@ -185,7 +208,7 @@ if __name__ == "__main__":
         "book_in_bookshelf": "/home/harvey/Data/rpdiff_V3/book_in_bookshelf",
         "mug_on_rack_multi": "/home/harvey/Project/VIL2/vil2/external/rpdiff/data/task_demos/mug_on_rack_multi_large_proc_gen_demos/task_name_mug_on_rack_multi",
     }
-    task_name = "book_in_bookshelf"
+
     data_dir = data_path_dict[task_name]
     data_file_list = os.listdir(data_dir)
     data_file_list = [f for f in data_file_list if f.endswith(".npz")]

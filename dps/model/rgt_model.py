@@ -45,7 +45,7 @@ class LRigPoseTransformer(L.LightningModule):
         self.batch_size = cfg.DATALOADER.BATCH_SIZE
         self.valid_crop_threshold = cfg.MODEL.VALID_CROP_THRESHOLD
         self.rot_axis = cfg.DATALOADER.AUGMENTATION.ROT_AXIS
-        self.corr_radius = 0.02
+        self.corr_radius = 0.04  # 0.02
         self.dot_threhold = -0.8
         self.sample_batch = None
 
@@ -190,7 +190,9 @@ class LRigPoseTransformer(L.LightningModule):
         batch_anchor_coord = to_dense_batch(anchor_coord, anchor_batch_idx)[0]
         batch_target_normal = to_dense_batch(target_normal, target_batch_idx)[0]
         batch_anchor_normal = to_dense_batch(anchor_normal, anchor_batch_idx)[0]
-        icp_corr = pcd_utils.compute_batch_corr_radius(batch_target_coord, batch_anchor_coord, batch_target_normal, batch_anchor_normal, radius=self.corr_radius, dot_threshold=self.dot_threhold)
+        icp_corr = pcd_utils.compute_batch_corr_radius(batch_target_coord, batch_anchor_coord, batch_target_normal, batch_anchor_normal, radius=self.corr_radius, dot_threshold=self.dot_threhold).to(
+            target_coord.device
+        )
         if use_repulse:
             batch_target_coord, target_mask = to_dense_batch(target_coord, target_batch_idx)
             batch_anchor_coord, anchor_mask = to_dense_batch(anchor_coord, anchor_batch_idx)

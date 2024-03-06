@@ -35,6 +35,7 @@ if __name__ == "__main__":
     random.seed(args.seed)
     np.random.seed(args.seed)
     # Load config
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     task_name = args.task_name
     root_path = os.path.dirname((os.path.abspath(__file__)))
     cfg_file = os.path.join(root_path, "config", f"pose_transformer_rpdiff_{task_name}.py")
@@ -46,7 +47,7 @@ if __name__ == "__main__":
     act_cfg.DATALOADER.BATCH_SIZE = 32
     seg_cfg.MODEL.NOISE_NET.NAME = "PCDSAMNOISENET"
     seg_cfg.DATALOADER.AUGMENTATION.CROP_PCD = False
-    seg_cfg.DATALOADER.BATCH_SIZE = 8
+    seg_cfg.DATALOADER.BATCH_SIZE = 2
 
     # Load dataset & data loader
     train_dataset, val_dataset, test_dataset = build_rpdiff_dataset(root_path, seg_cfg)
@@ -59,7 +60,7 @@ if __name__ == "__main__":
     raw_data_dir = os.path.join(raw_data_dir, task_name)
     raw_data_file_list = os.listdir(raw_data_dir)
     raw_data_file_list = [os.path.join(raw_data_dir, f) for f in raw_data_file_list]
-    rpdiff_helper = RpdiffHelper(downsample_voxel_size=seg_cfg.PREPROCESS.GRID_SIZE, batch_size=seg_cfg.DATALOADER.BATCH_SIZE)
+    rpdiff_helper = RpdiffHelper(downsample_voxel_size=seg_cfg.PREPROCESS.GRID_SIZE, scale=seg_cfg.PREPROCESS.TARGET_RESCALE, batch_size=seg_cfg.DATALOADER.BATCH_SIZE)
 
     # Build segmentation model
     net_name = seg_cfg.MODEL.NOISE_NET.NAME
@@ -75,6 +76,7 @@ if __name__ == "__main__":
     sorted_checkpoints = sorted(checkpoints, key=lambda x: float(x.split("=")[-1].split(".ckpt")[0]))
     checkpoint_file = os.path.join(checkpoint_path, sorted_checkpoints[0])
     seg_model.load(checkpoint_file)
+    seg_model.lpcd_noise_net.to(device)
 
     # Build action model
     act_net_name = act_cfg.MODEL.NOISE_NET.NAME
@@ -90,6 +92,7 @@ if __name__ == "__main__":
     sorted_checkpoints = sorted(checkpoints, key=lambda x: float(x.split("=")[-1].split(".ckpt")[0]))
     checkpoint_file = os.path.join(checkpoint_path, sorted_checkpoints[0])
     act_model.load(checkpoint_file)
+    act_model.lpose_transformer.to(device)
 
     # Testing raw material
     for i in range(40):
@@ -99,12 +102,13 @@ if __name__ == "__main__":
             data_file = next(iter(raw_data_file_list))
             data = read_rpdiff_data(data_file)
             batch = rpdiff_helper.process_data(target_coord=data["target_coord"], target_normal=data["target_normal"], anchor_coord=data["anchor_coord"], anchor_normal=data["anchor_normal"])
-        if i < 20:
+        if i < 2:
             continue
+
         # Perform segmentation
         check_batch_idx = 1
         pred_anchor_label, anchor_coord, anchor_normal, anchor_feat = seg_model.predict(batch=batch, check_batch_idx=check_batch_idx, vis=False)
-        seg_list = seg_model.seg_and_rank(anchor_coord, pred_anchor_label, normal=anchor_normal, feat=anchor_feat, crop_strategy="bbox")
+        seg_list = seg_model.seg_and_rank(anchor_coord, pred_anchor_label, normal=anchor_normal, feat=anchor_feat, crop_strategy="none")
 
         # DEBUG: visualize the segmentation result
         anchor_pcd = o3d.geometry.PointCloud()

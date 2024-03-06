@@ -164,7 +164,8 @@ class RpdiffHelper:
         target_coord, target_color, target_normal = downsample_points(reorient_data["target_coord"], None, reorient_data["target_normal"], self.downsample_voxel_size)
         anchor_coord, anchor_color, anchor_normal = downsample_points(reorient_data["anchor_coord"], None, reorient_data["anchor_normal"], self.downsample_voxel_size)
         # Gen superpoint
-        anchor_superpoint = self.spt.gen_superpoint(anchor_coord, anchor_color, anchor_normal, scale=self.scale, vis=True)
+        anchor_superpoint = self.spt.gen_superpoint(anchor_coord, anchor_color, anchor_normal, scale=self.scale, vis=False)
+        # visualize_superpoint(anchor_superpoint)
         # Complete shape
         target_coord, target_normal = complete_shape(target_coord, strategy="bbox", vis=False)
         target_feat = np.zeros((target_coord.shape[0], len(f_keys)), dtype=np.float32)
