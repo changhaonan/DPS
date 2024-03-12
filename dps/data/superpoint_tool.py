@@ -204,9 +204,9 @@ if __name__ == "__main__":
     spt = SuperPointTool(pre_transform=datamodule.pre_transform)
     # Load rpdiff data
     data_path_dict = {
-        "stack_can_in_cabinet": "/home/harvey/Project/VIL2/vil2/external/rpdiff/data/task_demos/can_in_cabinet_stack/task_name_stack_can_in_cabinet",
+        "stack_can_in_cabinet": "/home/harvey/Project/dps/dps/external/rpdiff/data/task_demos/can_in_cabinet_stack/task_name_stack_can_in_cabinet",
         "book_in_bookshelf": "/home/harvey/Data/rpdiff_V3/book_in_bookshelf",
-        "mug_on_rack_multi": "/home/harvey/Project/VIL2/vil2/external/rpdiff/data/task_demos/mug_on_rack_multi_large_proc_gen_demos/task_name_mug_on_rack_multi",
+        "mug_on_rack_multi": "/home/harvey/Project/dps/dps/external/rpdiff/data/task_demos/mug_on_rack_multi_large_proc_gen_demos/task_name_mug_on_rack_multi",
     }
 
     data_dir = data_path_dict[task_name]

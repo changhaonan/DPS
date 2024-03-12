@@ -16,7 +16,17 @@ python dps/scripts/gen_superpoint.py
 python preprocess_data.py
 ```
 
-## Training
+## Evaluation on RPdiff dataset
+
+1. Set environment variable `RPDIFF_SOURCE_DIR`:
+```
+export RPDIFF_SOURCE_DIR=$PWD/dps/external/rpdiff
+```
+
+2. Run meshcat viewer:
+```
+meshcat-server
+```
 
 ## Install
 

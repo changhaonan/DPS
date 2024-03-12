@@ -38,7 +38,6 @@ real*
 logfile
 
 # Data
-dps/external/rpdiff/*
 dps/external/rpdiff/data/*
 dps/external/rpdiff/descriptions/*
 dps/external/rpdiff/eval_data/*
@@ -52,3 +51,6 @@ build/*
 
 # Logs
 log.txt
+
+# 
+*.

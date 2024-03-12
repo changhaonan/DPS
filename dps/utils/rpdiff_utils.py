@@ -17,19 +17,39 @@ def parse_child_parent(arr):
     return parent_val, child_val
 
 
-def read_rpdiff_data(data_file):
-    raw_data = np.load(data_file, allow_pickle=True)
-    parent_pcd_s, child_pcd_s = parse_child_parent(raw_data["multi_obj_start_pcd"])
-    parent_normal_s, child_normal_s = parse_child_parent(raw_data["normals"])
-    parent_color_s, child_color_s = parse_child_parent(raw_data["colors"])
-    data = {
-        "target_coord": child_pcd_s,
-        "target_normal": child_normal_s,
-        "target_color": child_color_s,
-        "anchor_coord": parent_pcd_s,
-        "anchor_normal": parent_normal_s,
-        "anchor_color": parent_color_s,
-    }
+def read_rpdiff_data(data_file=None, target_coord=None, anchor_coord=None, target_normal=None, anchor_normal=None, **kwargs):
+    if data_file is not None:
+        raw_data = np.load(data_file, allow_pickle=True)
+        parent_pcd_s, child_pcd_s = parse_child_parent(raw_data["multi_obj_start_pcd"])
+        parent_normal_s, child_normal_s = parse_child_parent(raw_data["normals"])
+        parent_color_s, child_color_s = parse_child_parent(raw_data["colors"])
+        data = {
+            "target_coord": child_pcd_s,
+            "target_normal": child_normal_s,
+            "target_color": child_color_s,
+            "anchor_coord": parent_pcd_s,
+            "anchor_normal": parent_normal_s,
+            "anchor_color": parent_color_s,
+        }
+    else:
+        data = {
+            "target_coord": target_coord,
+            "target_normal": target_normal,
+            "anchor_coord": anchor_coord,
+            "anchor_normal": anchor_normal,
+        }
+    vis = kwargs.get("vis", False)
+    if vis:
+        # Check data
+        target_pcd_o3d = o3d.geometry.PointCloud()
+        target_pcd_o3d.points = o3d.utility.Vector3dVector(data["target_coord"])
+        target_pcd_o3d.normals = o3d.utility.Vector3dVector(data["target_normal"])
+        target_pcd_o3d.paint_uniform_color([0, 0, 1])
+        anchor_pcd_o3d = o3d.geometry.PointCloud()
+        anchor_pcd_o3d.points = o3d.utility.Vector3dVector(data["anchor_coord"])
+        anchor_pcd_o3d.normals = o3d.utility.Vector3dVector(data["anchor_normal"])
+        anchor_pcd_o3d.paint_uniform_color([1, 0, 0])
+        o3d.visualization.draw_geometries([target_pcd_o3d, anchor_pcd_o3d])
     return data
 
 
@@ -93,8 +113,8 @@ def reorient_pcd(target_coord, anchor_coord, target_normal=None, anchor_normal=N
         "anchor_coord": anchor_coord,
         "target_normal": target_normal,
         "anchor_normal": anchor_normal,
-        "anchor_pose": np.linalg.inv(anchor_pose),
-        "target_pose": np.linalg.inv(target_pose),
+        "anchor_pose": anchor_pose,
+        "target_pose": target_pose,
     }
     return data
 
@@ -134,22 +154,11 @@ def post_filter_rpdiff(pred_pose: np.ndarray, samples: list, collision_threshold
 class RpdiffHelper:
     """RpdiffHelper; directly loading from raw point cloud data"""
 
-    def __init__(self, scale=1.0, downsample_voxel_size=0.02, batch_size: int = 8) -> None:
+    def __init__(self, scale=1.0, downsample_voxel_size=0.02, batch_size: int = 8, superpoint_cfg: list = []) -> None:
         self.scale = scale
         self.downsample_voxel_size = downsample_voxel_size
         self.batch_size = batch_size
-        cfg = init_config(
-            overrides=[
-                "experiment=semantic/scannet.yaml",
-                "datamodule.voxel=0.03",
-                "datamodule.pcp_regularization=[0.01, 0.1]",
-                "datamodule.pcp_spatial_weight=[0.1, 0.1]",
-                "datamodule.pcp_cutoff=[10, 10]",
-                "datamodule.graph_gap=[0.2, 0.5]",
-                "datamodule.graph_chunk=[1e6, 1e5]",
-                "+net.nano=True",
-            ]
-        )
+        cfg = init_config(overrides=superpoint_cfg)
         # Instantiate the datamodule
         datamodule = hydra.utils.instantiate(cfg.datamodule)
         # Initialize SuperPointTool
@@ -182,6 +191,8 @@ class RpdiffHelper:
             "anchor_normal": anchor_superpoint["normal"],
             "anchor_feat": anchor_feat,
             "anchor_super_index": np.vstack(anchor_superpoint["super_index"]).T,
+            "anchor_pose": reorient_data["anchor_pose"][None, ...],
+            "target_pose": reorient_data["target_pose"][None, ...],
         }
         return self.convert_to_batch(data, self.batch_size)
 
@@ -197,6 +208,8 @@ class RpdiffHelper:
             "target_batch_index": [],
             "anchor_batch_index": [],
             "anchor_super_index": [],
+            "anchor_pose": [],
+            "target_pose": [],
         }
         for idx in range(batch_size):
             target["target_coord"].append(data["target_coord"].astype(np.float32))
@@ -208,4 +221,6 @@ class RpdiffHelper:
             target["target_batch_index"].append(np.full([len(data["target_coord"])], fill_value=idx, dtype=np.int64))
             target["anchor_batch_index"].append(np.full([len(data["anchor_coord"])], fill_value=idx, dtype=np.int64))
             target["anchor_super_index"].append(data["anchor_super_index"].astype(np.int64))
+            target["anchor_pose"].append(data["anchor_pose"].astype(np.float32))
+            target["target_pose"].append(data["target_pose"].astype(np.float32))
         return {k: torch.from_numpy(np.concatenate(v)) for k, v in target.items()}

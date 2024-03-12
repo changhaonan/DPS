@@ -50,7 +50,7 @@ def visualize_anet3d(superpoint_path, split="train"):
 
 if __name__ == "__main__":
     data_path_dict = {
-        "stack_can_in_cabinet": "/home/harvey/Project/VIL2/vil2/external/rpdiff/data/task_demos/can_in_cabinet_stack/task_name_stack_can_in_cabinet",
+        "stack_can_in_cabinet": "/home/harvey/Project/dps/dps/external/rpdiff/data/task_demos/can_in_cabinet_stack/task_name_stack_can_in_cabinet",
         "book_in_bookshelf": "/home/harvey/Data/rpdiff_V3/book_in_bookshelf",
         "anet3d": "/home/harvey/Data/Anet3D",
     }

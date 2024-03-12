@@ -42,3 +42,10 @@ rich
 gdown
 ipyfilechooser
 opencv-python
+
+# For evaluation on rpdiff
+pybullet
+meshcat
+git+https://github.com/Improbable-AI/airobot.git@panda-2f140
+mesh_to_sdf
+healpy

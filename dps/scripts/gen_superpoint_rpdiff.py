@@ -29,25 +29,14 @@ if __name__ == "__main__":
     scale = task_cfg.PREPROCESS.TARGET_RESCALE
     downsample_voxel_size = task_cfg.PREPROCESS.GRID_SIZE
     # Parse the configs using hydra
-    cfg = init_config(
-        overrides=[
-            "experiment=semantic/scannet.yaml",
-            "datamodule.voxel=0.02",
-            "datamodule.pcp_regularization=[0.01, 0.1]",
-            "datamodule.pcp_spatial_weight=[0.1, 0.1]",
-            "datamodule.pcp_cutoff=[10, 10]",
-            "datamodule.graph_gap=[0.2, 0.5]",
-            "datamodule.graph_chunk=[1e6, 1e5]",
-            "+net.nano=True",
-        ]
-    )
+    cfg = init_config(overrides=task_cfg.DATALOADER.SUPER_POINT)
     # Instantiate the datamodule
     datamodule = hydra.utils.instantiate(cfg.datamodule)
     # Initialize SuperPointTool
     spt = SuperPointTool(pre_transform=datamodule.pre_transform)
     # Load rpdiff data
     data_path_dict = {
-        "stack_can_in_cabinet": "/home/harvey/Project/VIL2/vil2/external/rpdiff/data/task_demos/can_in_cabinet_stack/task_name_stack_can_in_cabinet",
+        "stack_can_in_cabinet": "/home/harvey/Project/dps/dps/external/rpdiff/data/task_demos/can_in_cabinet_stack/task_name_stack_can_in_cabinet",
         "book_in_bookshelf": "/home/harvey/Data/rpdiff_V3/book_in_bookshelf",
     }
     task_name = "book_in_bookshelf"

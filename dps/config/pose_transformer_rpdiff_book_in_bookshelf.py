@@ -34,6 +34,15 @@ DATALOADER = dict(
         KNN_K=20,
         NORMALIZE_COORD=True,
     ),
+    SUPER_POINT=[
+        "experiment=semantic/scannet.yaml",
+        "datamodule.voxel=0.02",
+        "datamodule.pcp_regularization=[0.01, 0.1]",
+        "datamodule.pcp_spatial_weight=[0.1, 0.1]",
+        "datamodule.pcp_cutoff=[10, 10]",
+        "datamodule.graph_gap=[0.2, 0.5]",
+        "datamodule.graph_chunk=[1e6, 1e5]",
+    ],
 )
 TRAIN = dict(
     NUM_EPOCHS=10000,
