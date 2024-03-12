@@ -91,7 +91,7 @@ if __name__ == "__main__":
             p_super_point_data = spt.gen_superpoint(p_points, p_colors, p_normals, scale=scale, vis=False)
             c_super_point_data = spt.gen_superpoint(c_points, c_colors, c_normals, scale=scale, vis=False)
 
-            # visualize_superpoint(p_super_point_data)
+            visualize_superpoint(p_super_point_data)
             super_point_dict[data_file] = {
                 "parent": p_super_point_data,
                 "child": c_super_point_data,

@@ -147,6 +147,8 @@ class LPcdSegDiffusion(L.LightningModule):
                 # Log image in wandb
                 wandb_logger = self.logger.experiment
                 wandb_logger.log({f"val_label_image": [wandb.Image(concat_image, caption=f"val_label_image_{i}")]})
+        if (self.current_epoch + 1) % 5 == 0:
+            self.sample_batch = None  # Reset sample batch
 
     def forward(self, batch):
         """Inference for PCD diffusion model."""
@@ -373,7 +375,7 @@ class PCDDModel:
     def seg_and_rank(self, coord, prob, crop_strategy="none", **kwargs):
         """Segment point and rank by probability"""
         prob_thresh = 0.5
-        num_thresh = 50
+        num_thresh = 100
         seg_list = []
         for i in range(coord.shape[0]):
             prob_i = prob[i]

@@ -35,7 +35,8 @@ if __name__ == "__main__":
     random.seed(args.seed)
     np.random.seed(args.seed)
     # Load config
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cpu")
     task_name = args.task_name
     root_path = os.path.dirname((os.path.abspath(__file__)))
     cfg_file = os.path.join(root_path, "config", f"pose_transformer_rpdiff_{task_name}.py")
@@ -55,7 +56,7 @@ if __name__ == "__main__":
     val_data_loader = torch.utils.data.DataLoader(val_dataset, batch_size=seg_cfg.DATALOADER.BATCH_SIZE, shuffle=False, num_workers=act_cfg.DATALOADER.NUM_WORKERS, collate_fn=PcdPairCollator())
 
     # Raw data
-    use_raw_data = True
+    use_raw_data = False
     raw_data_dir = "/home/harvey/Data/rpdiff_V3"
     raw_data_dir = os.path.join(raw_data_dir, task_name)
     raw_data_file_list = os.listdir(raw_data_dir)
@@ -108,7 +109,7 @@ if __name__ == "__main__":
         # Perform segmentation
         check_batch_idx = 1
         pred_anchor_label, anchor_coord, anchor_normal, anchor_feat = seg_model.predict(batch=batch, check_batch_idx=check_batch_idx, vis=False)
-        seg_list = seg_model.seg_and_rank(anchor_coord, pred_anchor_label, normal=anchor_normal, feat=anchor_feat, crop_strategy="none")
+        seg_list = seg_model.seg_and_rank(anchor_coord, pred_anchor_label, normal=anchor_normal, feat=anchor_feat, crop_strategy="bbox")
 
         # DEBUG: visualize the segmentation result
         anchor_pcd = o3d.geometry.PointCloud()
@@ -119,6 +120,7 @@ if __name__ == "__main__":
             pcd = o3d.geometry.PointCloud()
             pcd.points = o3d.utility.Vector3dVector(seg["coord"])
             pcd.normals = o3d.utility.Vector3dVector(seg["normal"])
+            pcd.paint_uniform_color([1, 0, 0])
             origin = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1)
             o3d.visualization.draw_geometries([anchor_pcd, pcd, origin])
 

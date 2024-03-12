@@ -91,6 +91,8 @@ class LRigPoseTransformer(L.LightningModule):
                 image = self.view_result(batch_anchor_coord[i, :], batch_target_coord[i, :], pred_R[i, :], pred_t[i, :], conf_matrix[i, :], show_3d=False)
                 if image is not None:
                     self.logger.experiment.log({"val_result": [wandb.Image(image, caption=f"val_result_{i}")]})
+        if (self.current_epoch + 1) % 5 == 0:
+            self.sample_batch = None  # Reset
 
     def criterion(self, batch):
         conf_matrix, gt_corr, (gt_R, gt_t) = self.forward(batch)

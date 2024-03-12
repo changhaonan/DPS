@@ -146,11 +146,19 @@ def complete_shape(coord: np.ndarray, padding: float = 0.1, strategy: str = "bbo
         box_pcd.points = o3d.utility.Vector3dVector(box_points)
         # compute normal
         box_pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
+        # flip normals so that they are pointing outwards w.r.t. the center
+        normals = np.asarray(box_pcd.normals)
+        center = np.mean(box_points, axis=0)
+        to_center = center - box_points
+        dot = np.sum(normals * to_center, axis=-1)
+        flip_mask = dot > 0
+        normals[flip_mask] *= -1
+
         if vis:
             # transparence
             box_pcd.paint_uniform_color([0.9, 0.1, 0.1])
             o3d.visualization.draw_geometries([pcd, box_pcd])
-        return np.asarray(box_pcd.points), np.asarray(box_pcd.normals)
+        return np.asarray(box_pcd.points), normals
     else:
         raise ValueError(f"Invalid strategy: {strategy}")
 
