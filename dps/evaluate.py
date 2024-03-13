@@ -17,7 +17,9 @@ from detectron2.config import LazyConfig
 from torch.utils.data.dataset import random_split
 from dps.utils.dps_utils import build_rpdiff_dataset
 from dps.utils.rpdiff_utils import RpdiffHelper, read_rpdiff_data
+from dps.model.network.geometric import to_dense_batch, to_flat_batch
 import random
+import copy
 
 
 class DPSEvaluator:
@@ -60,15 +62,17 @@ class DPSEvaluator:
 
     def process(self, batch, check_batch_idx: int = 1, vis: bool = False, **kwargs):
         crop_strategy = kwargs.get("crop_strategy", "bbox")
-        max_try = kwargs.get("max_try", 3)
+        max_try = kwargs.get("max_try", 10)
+        act_batch_size = 8
         # Perform segmentation
-        for i in range(max_try):
+        seg_list = []
+        for _i in range(max_try):
             pred_anchor_label, anchor_coord, anchor_normal, anchor_feat = self.seg_model.predict(batch=batch, check_batch_idx=check_batch_idx, vis=vis, batch_size=self.batch_size)
-            seg_list = self.seg_model.seg_and_rank(anchor_coord, pred_anchor_label, normal=anchor_normal, feat=anchor_feat, crop_strategy=crop_strategy)
-            if len(seg_list) > 0:
+            seg_list += self.seg_model.seg_and_rank(anchor_coord, pred_anchor_label, normal=anchor_normal, feat=anchor_feat, crop_strategy=crop_strategy)
+            if len(seg_list) >= act_batch_size:
                 break
             else:
-                print(f"Retry segmentation {i}...")
+                print(f"Retry segmentation {_i}...")
 
         # DEBUG: visualize the segmentation result
         if vis:
@@ -89,19 +93,18 @@ class DPSEvaluator:
         target_coord = batch["target_coord"][target_batch_idx == check_batch_idx].numpy()
         target_normal = batch["target_normal"][target_batch_idx == check_batch_idx].numpy()
         target_feat = batch["target_feat"][target_batch_idx == check_batch_idx].numpy()
-        # Cropped coord
-        anchor_coord = seg_list[0]["coord"]
-        anchor_normal = seg_list[0]["normal"]
-        anchor_feat = seg_list[0]["feat"]
-        # Full coord
+        data = {"target_coord": target_coord, "target_normal": target_normal, "target_feat": target_feat}
+        act_batch = self.convert_to_batch(data, seg_list, batch_size=act_batch_size)
         anchor_batch_idx = batch["anchor_batch_index"]
         anchor_coord_full = batch["anchor_coord"][anchor_batch_idx == check_batch_idx].numpy()
         anchor_normal_full = batch["anchor_normal"][anchor_batch_idx == check_batch_idx].numpy()
-        anchor_feat_full = batch["anchor_feat"][anchor_batch_idx == check_batch_idx].numpy()
-
-        # Move anchor to center
-        anchor_center = np.mean(anchor_coord, axis=0)
-        anchor_coord -= anchor_center
+        # Shift anchor to center
+        anchor_batch_idx = act_batch["anchor_batch_index"]
+        anchor_coord = act_batch["anchor_coord"]
+        batch_anchor_coord, anchor_mask = to_dense_batch(anchor_coord, anchor_batch_idx)
+        batch_anchor_center = batch_anchor_coord.mean(dim=1, keepdim=True)
+        anchor_coord = batch_anchor_coord - batch_anchor_center
+        act_batch["anchor_coord"] = to_flat_batch(anchor_coord, anchor_mask)[0]
         for k in range(3):
             print(f"Iteration {k}...")
             if k != 0:
@@ -109,39 +112,29 @@ class DPSEvaluator:
                 prev_R = pred_R
                 prev_t = pred_t
             else:
-                prev_R = np.eye(3)[None, :, :].astype(np.float32)
-                prev_t = np.zeros((1, 3)).astype(np.float32)
+                prev_R = np.eye(3)[None, :, :].astype(np.float32).repeat(act_batch_size, axis=0)
+                prev_t = np.zeros((1, 3)).astype(np.float32).repeat(act_batch_size, axis=0)
                 do_icp = False
-            conf_matrix, gt_corr, (pred_R, pred_t) = self.act_model.predict(
-                target_coord=target_coord,
-                target_normal=target_normal,
-                target_feat=target_feat,
-                anchor_coord=anchor_coord,
-                anchor_normal=anchor_normal,
-                anchor_feat=anchor_feat,
-                prev_R=prev_R,
-                prev_t=prev_t,
-                vis=vis,
-                do_icp=do_icp,
-            )
+            act_batch["prev_R"] = torch.from_numpy(prev_R).to(self.device)
+            act_batch["prev_t"] = torch.from_numpy(prev_t).to(self.device)
+            conf_matrix, gt_corr, (pred_R, pred_t) = self.act_model.predict(batch=act_batch, vis=vis, do_icp=do_icp)
 
-        if vis:
-            # Visualize everything together
-            target_pcd = o3d.geometry.PointCloud()
-            target_pcd.points = o3d.utility.Vector3dVector(target_coord)
-            target_pcd.normals = o3d.utility.Vector3dVector(target_normal)
-            target_pcd.paint_uniform_color([1, 0, 0])
-            pose = np.eye(4)
-            pose[:3, :3] = pred_R
-            pose[:3, 3] = pred_t
-            target_pcd.transform(pose)
-            target_pcd.translate(anchor_center)
-
-            anchor_pcd = o3d.geometry.PointCloud()
-            anchor_pcd.points = o3d.utility.Vector3dVector(anchor_coord_full)
-            anchor_pcd.normals = o3d.utility.Vector3dVector(anchor_normal_full)
-            anchor_pcd.paint_uniform_color([0, 1, 0])
-            o3d.visualization.draw_geometries([target_pcd, anchor_pcd])
+        # if vis:
+        #     for _i in range(pred_R.shape[0]):
+        #         # Visualize everything together
+        #         target_pcd = o3d.geometry.PointCloud()
+        #         target_pcd.points = o3d.utility.Vector3dVector(target_coord)
+        #         target_pcd.normals = o3d.utility.Vector3dVector(target_normal)
+        #         target_pcd.paint_uniform_color([1, 0, 0])
+        #         pose = np.eye(4)
+        #         pose[:3, :3] = pred_R[_i, ...]
+        #         pose[:3, 3] = pred_t[_i, ...]
+        #         target_pcd.transform(pose)
+        #         anchor_pcd = o3d.geometry.PointCloud()
+        #         anchor_pcd.points = o3d.utility.Vector3dVector(anchor_coord_full)
+        #         anchor_pcd.normals = o3d.utility.Vector3dVector(anchor_normal_full)
+        #         anchor_pcd.paint_uniform_color([0, 1, 0])
+        #         o3d.visualization.draw_geometries([target_pcd, anchor_pcd])
 
         # Recover pose if there exists pose before
         if "anchor_pose" in batch:
@@ -152,13 +145,39 @@ class DPSEvaluator:
             target_pose = batch["target_pose"][check_batch_idx, ...].detach().cpu().numpy()
         else:
             target_pose = np.eye(4)
-        pred_pose = np.eye(4)
-        pred_pose[:3, :3] = pred_R
-        pred_pose[:3, 3] = pred_t
-        T_shift = np.eye(4)
-        T_shift[:3, 3] = anchor_center
-        pred_pose = anchor_pose @ T_shift @ pred_pose @ np.linalg.inv(target_pose)
-        return pred_pose
+        pred_pose_list = []
+        for _i in range(act_batch_size):
+            pred_pose = np.eye(4)
+            pred_pose[:3, :3] = pred_R[_i, ...]
+            pred_pose[:3, 3] = pred_t[_i, ...]
+            T_shift = np.eye(4)
+            T_shift[:3, 3] = batch_anchor_center[_i, ...].detach().cpu().numpy()
+            pred_pose = anchor_pose @ T_shift @ pred_pose @ np.linalg.inv(target_pose)
+            pred_pose_list.append(pred_pose)
+        return pred_pose_list
+
+    def convert_to_batch(self, data: dict, seg_list: list, batch_size: int = 1):
+        target = {
+            "target_coord": [],
+            "target_normal": [],
+            "target_feat": [],
+            "anchor_coord": [],
+            "anchor_normal": [],
+            "anchor_feat": [],
+            "target_batch_index": [],
+            "anchor_batch_index": [],
+        }
+        for idx in range(min(len(seg_list), batch_size)):
+            seg = seg_list[idx]
+            target["target_coord"].append(data["target_coord"])
+            target["target_normal"].append(data["target_normal"])
+            target["target_feat"].append(data["target_feat"])
+            target["anchor_coord"].append(seg["coord"])
+            target["anchor_normal"].append(seg["normal"])
+            target["anchor_feat"].append(seg["feat"])
+            target["target_batch_index"].append(np.full([len(data["target_coord"])], fill_value=idx, dtype=np.int64))
+            target["anchor_batch_index"].append(np.full([len(seg["coord"])], fill_value=idx, dtype=np.int64))
+        return {k: torch.from_numpy(np.concatenate(v)) for k, v in target.items()}
 
 
 if __name__ == "__main__":
@@ -189,7 +208,7 @@ if __name__ == "__main__":
     act_cfg.DATALOADER.BATCH_SIZE = 32
     seg_cfg.MODEL.NOISE_NET.NAME = "PCDSAMNOISENET"
     seg_cfg.DATALOADER.AUGMENTATION.CROP_PCD = False
-    seg_cfg.DATALOADER.BATCH_SIZE = 2
+    seg_cfg.DATALOADER.BATCH_SIZE = 8
 
     # Load dataset & data loader
     train_dataset, val_dataset, test_dataset = build_rpdiff_dataset(root_path, seg_cfg)
@@ -222,4 +241,22 @@ if __name__ == "__main__":
 
         # Perform segmentation
         check_batch_idx = 1
-        pred_pose = evaluator.process(batch, check_batch_idx=check_batch_idx, vis=True)
+        pred_pose_list = evaluator.process(batch, check_batch_idx=check_batch_idx, vis=False)
+
+        # Visualize on whole
+        target_pcd = o3d.geometry.PointCloud()
+        target_pcd.points = o3d.utility.Vector3dVector(data["target_coord"])
+        target_pcd.normals = o3d.utility.Vector3dVector(data["target_normal"])
+        target_pcd.paint_uniform_color([1, 0, 0])
+
+        anchor_pcd = o3d.geometry.PointCloud()
+        anchor_pcd.points = o3d.utility.Vector3dVector(data["anchor_coord"])
+        anchor_pcd.normals = o3d.utility.Vector3dVector(data["anchor_normal"])
+        anchor_pcd.paint_uniform_color([0, 1, 0])
+
+        vis_list = [anchor_pcd]
+        for pred_pose in pred_pose_list:
+            target_pcd_copy = copy.deepcopy(target_pcd)
+            target_pcd_copy.transform(pred_pose)
+            vis_list.append(target_pcd_copy)
+        o3d.visualization.draw_geometries(vis_list)

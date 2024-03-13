@@ -352,6 +352,12 @@ class RGTModel:
             # Put to torch
             for key in batch.keys():
                 batch[key] = torch.from_numpy(batch[key])
+        # # Shift data
+        # anchor_batch_idx = batch["anchor_batch_index"]
+        # batch_anchor_coord, anchor_mask = to_dense_batch(batch["anchor_coord"], anchor_batch_idx)
+        # batch_anchor_center = batch_anchor_coord.mean(dim=1)
+        # batch_anchor_coord -= batch_anchor_center[:, None, :]
+        # batch["anchor_coord"] = to_flat_batch(batch_anchor_coord, anchor_mask)[0]
         # Put to device
         for key in batch.keys():
             batch[key] = batch[key].to(self.lpose_transformer.device)
@@ -360,6 +366,8 @@ class RGTModel:
             conf_matrix, gt_corr, (pred_R, pred_t) = self.lpose_transformer.icp(batch, use_repulse=False)
         else:
             conf_matrix, gt_corr, (pred_R, pred_t) = self.lpose_transformer(batch)
+        # Shift back
+        # pred_t = pred_t + batch_anchor_center
         if vis:
             anchor_batch_idx = batch["anchor_batch_index"]
             anchor_coord = batch["anchor_coord"]
