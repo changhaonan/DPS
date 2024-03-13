@@ -27,6 +27,7 @@ class DPSEvaluator:
         self.device = device
         self.seg_cfg = seg_cfg
         self.act_cfg = act_cfg
+        self.batch_size = min(seg_cfg.DATALOADER.BATCH_SIZE, act_cfg.DATALOADER.BATCH_SIZE)
         # Build segmentation model
         net_name = seg_cfg.MODEL.NOISE_NET.NAME
         net_init_args = seg_cfg.MODEL.NOISE_NET.INIT_ARGS[net_name]
@@ -59,9 +60,15 @@ class DPSEvaluator:
 
     def process(self, batch, check_batch_idx: int = 1, vis: bool = False, **kwargs):
         crop_strategy = kwargs.get("crop_strategy", "bbox")
+        max_try = kwargs.get("max_try", 3)
         # Perform segmentation
-        pred_anchor_label, anchor_coord, anchor_normal, anchor_feat = self.seg_model.predict(batch=batch, check_batch_idx=check_batch_idx, vis=False)
-        seg_list = self.seg_model.seg_and_rank(anchor_coord, pred_anchor_label, normal=anchor_normal, feat=anchor_feat, crop_strategy=crop_strategy)
+        for i in range(max_try):
+            pred_anchor_label, anchor_coord, anchor_normal, anchor_feat = self.seg_model.predict(batch=batch, check_batch_idx=check_batch_idx, vis=vis, batch_size=self.batch_size)
+            seg_list = self.seg_model.seg_and_rank(anchor_coord, pred_anchor_label, normal=anchor_normal, feat=anchor_feat, crop_strategy=crop_strategy)
+            if len(seg_list) > 0:
+                break
+            else:
+                print(f"Retry segmentation {i}...")
 
         # DEBUG: visualize the segmentation result
         if vis:

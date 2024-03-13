@@ -210,3 +210,75 @@ def compute_batch_corr_radius(pcd1, pcd2, normal1=None, normal2=None, radius=0.1
     if is_tensor:
         corr_matrix = torch.from_numpy(corr_matrix)
     return corr_matrix
+
+
+def arun(p, q):
+    """Compute the optimal rotation matrix using Arun's method."""
+    # Compute the centroids
+    p_centroid = np.mean(p, axis=0)
+    q_centroid = np.mean(q, axis=0)
+    # Center the point clouds
+    p_centered = p - p_centroid
+    q_centered = q - q_centroid
+    # Compute the covariance matrix
+    H = np.dot(p_centered.T, q_centered)
+    # Compute the SVD
+    U, _, Vt = np.linalg.svd(H)
+    # Compute the rotation matrix
+    R = np.dot(Vt.T, U.T)
+    t = q_centroid - np.dot(R, p_centroid)
+    return R, t
+
+
+def icp_pose_refine(coord1, coord2, normal1, normal2, pose_init, max_iter, vis: bool = False, **kwargs):
+    """Refine realtive pose between two point clouds using ICP. 1 is anchor, 2 is target."""
+    # Do fartherst point sampling
+    sample_size = kwargs.get("sample_size", 10000)
+    coord1_idx = np.random.choice(len(coord1), min(sample_size, coord1.shape[0]), replace=False)
+    coord1 = coord1[coord1_idx]
+    normal1 = normal1[coord1_idx]
+    coord2_idx = np.random.choice(len(coord2), min(sample_size, coord2.shape[0]), replace=False)
+    coord2 = coord2[coord2_idx]
+    normal2 = normal2[coord2_idx]
+
+    coord2_g = (pose_init[:3, :3] @ coord2.T + pose_init[:3, 3][:, None]).T
+    coord2_g_normal = (pose_init[:3, :3] @ normal2.T).T
+
+    if vis:
+        pcd1 = o3d.geometry.PointCloud()
+        pcd1.points = o3d.utility.Vector3dVector(coord1)
+        pcd1.normals = o3d.utility.Vector3dVector(normal1)
+        pcd1.paint_uniform_color([0.1, 0.1, 0.7])
+        pcd2 = o3d.geometry.PointCloud()
+        pcd2.points = o3d.utility.Vector3dVector(coord2_g)
+        pcd2.normals = o3d.utility.Vector3dVector(coord2_g_normal)
+        pcd2.paint_uniform_color([0.7, 0.1, 0.1])
+        o3d.visualization.draw_geometries([pcd1, pcd2])
+
+    for i in range(max_iter):
+        # Compute the correspondence matrix
+        corr_matrix = compute_batch_corr_radius(
+            coord1[None, ...], coord2_g[None, ...], normal1[None, ...], coord2_g_normal[None, ...], radius=kwargs.get("radius", 0.1), dot_threshold=kwargs.get("dot_threshold", -0.9)
+        )[0]
+        conf_idx = np.where(corr_matrix > 0)
+        # Compute the transformation matrix
+        coord1_select = coord1[conf_idx[0]]
+        coord2_select = coord2_g[conf_idx[1]]
+        R, t = arun(coord1_select, coord2_select)
+        # Apply the transformation matrix
+        coord2_g = (R @ coord2_g.T + t[:, None]).T
+        coord2_g_normal = (R @ coord2_g_normal.T).T
+        # Update the pose
+        pose_init[:3, :3] = R @ pose_init[:3, :3]
+        pose_init[:3, 3] = R @ pose_init[:3, 3] + t
+        if vis:
+            pcd1 = o3d.geometry.PointCloud()
+            pcd1.points = o3d.utility.Vector3dVector(coord1)
+            pcd1.normals = o3d.utility.Vector3dVector(normal1)
+            pcd1.paint_uniform_color([0.1, 0.1, 0.7])
+            pcd2 = o3d.geometry.PointCloud()
+            pcd2.points = o3d.utility.Vector3dVector(coord2_g)
+            pcd2.normals = o3d.utility.Vector3dVector(coord2_g_normal)
+            pcd2.paint_uniform_color([0.7, 0.1, 0.1])
+            o3d.visualization.draw_geometries([pcd1, pcd2])
+    return pose_init

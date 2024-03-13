@@ -39,6 +39,7 @@ from dps.external.rpdiff.utils.eval_gen_utils import (
 
 from dps.evaluate import DPSEvaluator
 from dps.utils.rpdiff_utils import RpdiffHelper, read_rpdiff_data
+from dps.utils.pcd_utils import icp_pose_refine, complete_shape
 import open3d as o3d
 
 # Alias
@@ -130,13 +131,17 @@ def main(args: config_util.AttrDict) -> None:
     act_cfg.DATALOADER.BATCH_SIZE = 32
     seg_cfg.MODEL.NOISE_NET.NAME = "PCDSAMNOISENET"
     seg_cfg.DATALOADER.AUGMENTATION.CROP_PCD = False
-    seg_cfg.DATALOADER.BATCH_SIZE = 2
+    seg_cfg.DATALOADER.BATCH_SIZE = 8
     # Build evaluator
     evaluator = DPSEvaluator(root_path, seg_cfg, act_cfg, device)
 
     # RPdiff helper
     rpdiff_helper = RpdiffHelper(
-        downsample_voxel_size=seg_cfg.PREPROCESS.GRID_SIZE, scale=seg_cfg.PREPROCESS.TARGET_RESCALE, batch_size=seg_cfg.DATALOADER.BATCH_SIZE, superpoint_cfg=seg_cfg.DATALOADER.SUPER_POINT
+        downsample_voxel_size=seg_cfg.PREPROCESS.GRID_SIZE,
+        scale=seg_cfg.PREPROCESS.TARGET_RESCALE,
+        batch_size=seg_cfg.DATALOADER.BATCH_SIZE,
+        target_padding=seg_cfg.DATALOADER.TARGET_PADDING,
+        superpoint_cfg=seg_cfg.DATALOADER.SUPER_POINT,
     )
     #####################################################################################
     # load all the multi class mesh info
@@ -700,13 +705,16 @@ def main(args: config_util.AttrDict) -> None:
                     obj_pts = pts_raw[obj_inds[0], :]
                     pc_obs_info["pcd_pts"][pc].append(obj_pts)
 
-                    # Compute normal
-                    pcd = o3d.geometry.PointCloud()
-                    pcd.points = o3d.utility.Vector3dVector(obj_pts)
-                    pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
-                    # Reorient normals to camera view
-                    pcd.orient_normals_towards_camera_location(cam.get_cam_ext()[:3, 3])
-                    pcd_normals = np.asarray(pcd.normals)
+                    if obj_pts.shape[0] > 0:
+                        # Compute normal
+                        pcd = o3d.geometry.PointCloud()
+                        pcd.points = o3d.utility.Vector3dVector(obj_pts)
+                        pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
+                        # Reorient normals to camera view
+                        pcd.orient_normals_towards_camera_location(cam.get_cam_ext()[:3, 3])
+                        pcd_normals = np.asarray(pcd.normals)
+                    else:
+                        pcd_normals = np.zeros((0, 3))
                     pc_obs_info["pcd_normals"][pc].append(pcd_normals)
 
             depth_imgs.append(seg_depth)
@@ -773,33 +781,38 @@ def main(args: config_util.AttrDict) -> None:
         inlier_parent_idx = np.where(np.max(parent_coord, axis=1) < 3.0)[0]
         parent_coord = parent_coord[inlier_parent_idx]
 
+        ############################################## Call the evaluator ##############################################
+       
         # Preprocess the data
-        vis = True
+        table_center = np.array([0.4, 0.0, table_z])
+        # # [DEBUG]
+        # anchor_pcd = o3d.geometry.PointCloud()
+        # anchor_pcd.points = o3d.utility.Vector3dVector(parent_coord)
+        # anchor_pcd.normals = o3d.utility.Vector3dVector(parent_normal)
+        # table_center_sphere = o3d.geometry.TriangleMesh.create_sphere(radius=0.1)
+        # table_center_sphere.translate(table_center)
+        # o3d.visualization.draw_geometries([anchor_pcd, table_center_sphere])
+        vis = False
         data = read_rpdiff_data(target_coord=child_coord, anchor_coord=parent_coord, target_normal=child_normal, anchor_normal=parent_normal, vis=vis)
-        batch = rpdiff_helper.process_data(target_coord=data["target_coord"], target_normal=data["target_normal"], anchor_coord=data["anchor_coord"], anchor_normal=data["anchor_normal"])
-        # [Debug]
-        anchor_pose = batch["anchor_pose"][0].detach().cpu().numpy()
-        target_pose = batch["target_pose"][0].detach().cpu().numpy()
-        raw_anchor_pcd = o3d.geometry.PointCloud()
-        raw_anchor_pcd.points = o3d.utility.Vector3dVector(parent_coord)
-        raw_anchor_pcd.paint_uniform_color([1, 0, 0])
-        anchor_coord = batch["anchor_coord"][batch["anchor_batch_index"] == 0].detach().cpu().numpy()
-        anchor_pcd = o3d.geometry.PointCloud()
-        anchor_pcd.points = o3d.utility.Vector3dVector(anchor_coord)
-        anchor_pcd.paint_uniform_color([1, 0, 0])        
-        anchor_pcd.transform(anchor_pose)
-        raw_target_pcd = o3d.geometry.PointCloud()
-        raw_target_pcd.points = o3d.utility.Vector3dVector(child_coord)
-        raw_target_pcd.paint_uniform_color([0, 0, 1])
-        target_coord = batch["target_coord"][batch["target_batch_index"] == 0].detach().cpu().numpy()
-        target_pcd = o3d.geometry.PointCloud()
-        target_pcd.points = o3d.utility.Vector3dVector(target_coord)
-        target_pcd.paint_uniform_color([0, 1, 1])
-        target_pcd.transform(target_pose)
-        o3d.visualization.draw_geometries([raw_anchor_pcd, anchor_pcd, raw_target_pcd, target_pcd])
-
+        batch = rpdiff_helper.process_data(
+            target_coord=data["target_coord"], target_normal=data["target_normal"], anchor_coord=data["anchor_coord"], anchor_normal=data["anchor_normal"], table_center=table_center, vis=vis
+        )
         pred_pose = evaluator.process(batch, check_batch_idx=0, vis=vis)
+        # Refine pose
+        # child_coord_complete, child_normal_complete = complete_shape(child_coord, padding=padding)
+        # pred_pose = icp_pose_refine(parent_coord, child_coord_complete, parent_normal, child_normal_complete, pred_pose, max_iter=max_iter, vis=vis, radius=corr_radius, dot_threshold=dot_threshold)
+        # # [DEBUG] Check in full shape
+        # anchor_pcd = o3d.geometry.PointCloud()
+        # anchor_pcd.points = o3d.utility.Vector3dVector(parent_coord_original)
+        # anchor_pcd.normals = o3d.utility.Vector3dVector(parent_normal)
+        # target_pcd = o3d.geometry.PointCloud()
+        # target_pcd.points = o3d.utility.Vector3dVector(child_pcd_original)
+        # target_pcd.normals = o3d.utility.Vector3dVector(child_normal)
+        # target_pcd.transform(pred_pose)
+        # target_pcd.paint_uniform_color([0, 0, 1])
+        # o3d.visualization.draw_geometries([anchor_pcd, target_pcd])
 
+        ############################################## Visualize the results ##############################################
         # exit(0)
         transformed_child1 = util.transform_pcd(child_pcd_guess, pred_pose)
 

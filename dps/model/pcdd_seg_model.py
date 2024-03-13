@@ -403,6 +403,9 @@ class PCDDModel:
                     v_i_crop = v_i[crop_index]
                     seg_list[-1][k] = v_i_crop
 
-        # Sort by prob
-        seg_list = sorted(seg_list, key=lambda x: x["prob"], reverse=True)
+        sort_strategy = kwargs.get("sort_strategy", "num_points")
+        if sort_strategy == "num_points":
+            seg_list = sorted(seg_list, key=lambda x: x["coord"].shape[0], reverse=False)
+        elif sort_strategy == "prob":
+            seg_list = sorted(seg_list, key=lambda x: x["prob"], reverse=True)
         return seg_list

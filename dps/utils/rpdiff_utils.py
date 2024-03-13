@@ -55,6 +55,7 @@ def read_rpdiff_data(data_file=None, target_coord=None, anchor_coord=None, targe
 
 def reorient_pcd(target_coord, anchor_coord, target_normal=None, anchor_normal=None, **kwargs):
     """Reorient the object"""
+    table_center = kwargs.get("table_center", [0, 0, 0])
     # Build o3d object
     target_pcd_o3d = o3d.geometry.PointCloud()
     target_pcd_o3d.points = o3d.utility.Vector3dVector(target_coord)
@@ -81,6 +82,9 @@ def reorient_pcd(target_coord, anchor_coord, target_normal=None, anchor_normal=N
     # The one with shorter extent is the x-axis
     anchor_R_x_idx = np.argmin(anchor_R_extent)
     anchor_R_x = anchor_R_axis[:, anchor_R_x_idx]
+    # x-axis should point to the table center, filp if not
+    if anchor_R_x @ (table_center - anchor_t) < 0:
+        anchor_R_x = -anchor_R_x
     # The other one is the y-axis
     anchor_R_y = np.cross(anchor_R_z, anchor_R_x)
     anchor_R = np.column_stack([anchor_R_x, anchor_R_y, anchor_R_z])
@@ -154,11 +158,12 @@ def post_filter_rpdiff(pred_pose: np.ndarray, samples: list, collision_threshold
 class RpdiffHelper:
     """RpdiffHelper; directly loading from raw point cloud data"""
 
-    def __init__(self, scale=1.0, downsample_voxel_size=0.02, batch_size: int = 8, superpoint_cfg: list = []) -> None:
+    def __init__(self, scale=1.0, downsample_voxel_size=0.02, batch_size: int = 8, target_padding=0.2, superpoint_cfg: list = []) -> None:
         self.scale = scale
         self.downsample_voxel_size = downsample_voxel_size
         self.batch_size = batch_size
         cfg = init_config(overrides=superpoint_cfg)
+        self.target_padding = target_padding
         # Instantiate the datamodule
         datamodule = hydra.utils.instantiate(cfg.datamodule)
         # Initialize SuperPointTool
@@ -167,7 +172,7 @@ class RpdiffHelper:
     def process_data(self, target_coord, anchor_coord, target_normal, anchor_normal, **kwargs):
         """Convert raw data into format for evaluation"""
         f_keys = ["planarity", "linearity", "verticality", "scattering"]
-        # First do reorientation
+        # First do reorientation; reorientation can make the training more efficient
         reorient_data = reorient_pcd(target_coord, anchor_coord, target_normal, anchor_normal, **kwargs)
         # Downsample the point cloud
         target_coord, target_color, target_normal = downsample_points(reorient_data["target_coord"], None, reorient_data["target_normal"], self.downsample_voxel_size)
@@ -176,7 +181,7 @@ class RpdiffHelper:
         anchor_superpoint = self.spt.gen_superpoint(anchor_coord, anchor_color, anchor_normal, scale=self.scale, vis=False)
         # visualize_superpoint(anchor_superpoint)
         # Complete shape
-        target_coord, target_normal = complete_shape(target_coord, strategy="bbox", vis=False)
+        target_coord, target_normal = complete_shape(target_coord, padding=self.target_padding, strategy="bbox", vis=False)
         target_feat = np.zeros((target_coord.shape[0], len(f_keys)), dtype=np.float32)
 
         anchor_feat = []

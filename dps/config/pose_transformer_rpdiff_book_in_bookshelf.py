@@ -14,6 +14,7 @@ DATALOADER = dict(
     ADD_NORMALS=True,
     ADD_COLORS=False,
     CORR_RADIUS=0.05,
+    TARGET_PADDING=0.2,  # train with 0.1 or 0.0, infer with 0.2
     AUGMENTATION=dict(
         IS_ELASTIC_DISTORTION=False,
         ELASTIC_DISTORTION_GRANULARITY=1.0,
