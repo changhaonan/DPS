@@ -85,4 +85,5 @@ You need to install `pytorch3d`, `superpoint`.
 - [x] Link the system with rpdiff pipeline.
 - [ ] Add training for real object.
 - [x] Improving the bbox points.
-- [ ] We can augment the pose registration with superpoint-augmentation; randomly dropping or superpoint.
+- [x] We can augment the pose registration with superpoint-augmentation; randomly dropping or superpoint.
+- [ ] We can also apply a range filter.
