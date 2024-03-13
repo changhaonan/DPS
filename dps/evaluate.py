@@ -18,6 +18,7 @@ from torch.utils.data.dataset import random_split
 from dps.utils.dps_utils import build_rpdiff_dataset
 from dps.utils.rpdiff_utils import RpdiffHelper, read_rpdiff_data
 from dps.model.network.geometric import to_dense_batch, to_flat_batch
+from dps.utils.pcd_utils import estimate_collision
 import random
 import copy
 
@@ -119,23 +120,6 @@ class DPSEvaluator:
             act_batch["prev_t"] = torch.from_numpy(prev_t).to(self.device)
             conf_matrix, gt_corr, (pred_R, pred_t) = self.act_model.predict(batch=act_batch, vis=vis, do_icp=do_icp)
 
-        # if vis:
-        #     for _i in range(pred_R.shape[0]):
-        #         # Visualize everything together
-        #         target_pcd = o3d.geometry.PointCloud()
-        #         target_pcd.points = o3d.utility.Vector3dVector(target_coord)
-        #         target_pcd.normals = o3d.utility.Vector3dVector(target_normal)
-        #         target_pcd.paint_uniform_color([1, 0, 0])
-        #         pose = np.eye(4)
-        #         pose[:3, :3] = pred_R[_i, ...]
-        #         pose[:3, 3] = pred_t[_i, ...]
-        #         target_pcd.transform(pose)
-        #         anchor_pcd = o3d.geometry.PointCloud()
-        #         anchor_pcd.points = o3d.utility.Vector3dVector(anchor_coord_full)
-        #         anchor_pcd.normals = o3d.utility.Vector3dVector(anchor_normal_full)
-        #         anchor_pcd.paint_uniform_color([0, 1, 0])
-        #         o3d.visualization.draw_geometries([target_pcd, anchor_pcd])
-
         # Recover pose if there exists pose before
         if "anchor_pose" in batch:
             anchor_pose = batch["anchor_pose"][check_batch_idx, ...].detach().cpu().numpy()
@@ -146,6 +130,7 @@ class DPSEvaluator:
         else:
             target_pose = np.eye(4)
         pred_pose_list = []
+        seg_size_list = []
         for _i in range(act_batch_size):
             pred_pose = np.eye(4)
             pred_pose[:3, :3] = pred_R[_i, ...]
@@ -154,7 +139,8 @@ class DPSEvaluator:
             T_shift[:3, 3] = batch_anchor_center[_i, ...].detach().cpu().numpy()
             pred_pose = anchor_pose @ T_shift @ pred_pose @ np.linalg.inv(target_pose)
             pred_pose_list.append(pred_pose)
-        return pred_pose_list
+            seg_size_list.append(seg_list[_i]["coord"].shape[0])
+        return pred_pose_list, seg_size_list
 
     def convert_to_batch(self, data: dict, seg_list: list, batch_size: int = 1):
         target = {
@@ -241,7 +227,7 @@ if __name__ == "__main__":
 
         # Perform segmentation
         check_batch_idx = 1
-        pred_pose_list = evaluator.process(batch, check_batch_idx=check_batch_idx, vis=False)
+        pred_pose_list, seg_size_list = evaluator.process(batch, check_batch_idx=check_batch_idx, vis=False)
 
         # Visualize on whole
         target_pcd = o3d.geometry.PointCloud()
@@ -255,8 +241,19 @@ if __name__ == "__main__":
         anchor_pcd.paint_uniform_color([0, 1, 0])
 
         vis_list = [anchor_pcd]
+        target_pcd_list = []
+        max_num_collision = 0
         for pred_pose in pred_pose_list:
             target_pcd_copy = copy.deepcopy(target_pcd)
             target_pcd_copy.transform(pred_pose)
-            vis_list.append(target_pcd_copy)
+            # Estimate collision status
+            num_collision = estimate_collision(np.asarray(target_pcd_copy.points), np.asarray(anchor_pcd.points))
+            target_pcd_list.append((target_pcd_copy, num_collision))
+            max_num_collision = max(max_num_collision, num_collision)
+
+        # Sort by num_collision
+        target_pcd_list = sorted(target_pcd_list, key=lambda x: x[1])
+        for target_pcd, num_collision in target_pcd_list:
+            target_pcd.paint_uniform_color([0, 0, 1.0 / (max_num_collision + 1) * num_collision])
+            vis_list.append(target_pcd)
         o3d.visualization.draw_geometries(vis_list)

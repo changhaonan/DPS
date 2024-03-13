@@ -39,7 +39,7 @@ from dps.external.rpdiff.utils.eval_gen_utils import (
 
 from dps.evaluate import DPSEvaluator
 from dps.utils.rpdiff_utils import RpdiffHelper, read_rpdiff_data
-from dps.utils.pcd_utils import icp_pose_refine, complete_shape
+from dps.utils.pcd_utils import icp_pose_refine, complete_shape, estimate_collision
 import open3d as o3d
 
 # Alias
@@ -782,7 +782,7 @@ def main(args: config_util.AttrDict) -> None:
         parent_coord = parent_coord[inlier_parent_idx]
 
         ############################################## Call the evaluator ##############################################
-       
+
         # Preprocess the data
         table_center = np.array([0.4, 0.0, table_z])
         # # [DEBUG]
@@ -797,7 +797,22 @@ def main(args: config_util.AttrDict) -> None:
         batch = rpdiff_helper.process_data(
             target_coord=data["target_coord"], target_normal=data["target_normal"], anchor_coord=data["anchor_coord"], anchor_normal=data["anchor_normal"], table_center=table_center, vis=vis
         )
-        pred_pose = evaluator.process(batch, check_batch_idx=0, vis=vis)
+        pred_pose_list, seg_size_list = evaluator.process(batch, check_batch_idx=0, vis=vis)
+        # Rank pose by collision
+        min_num_collision = np.inf
+        cur_seg_size = np.inf
+        best_pred_pose = None
+        for seg_size, pred_pose in zip(seg_size_list, pred_pose_list):
+            child_coord_copy = copy.deepcopy(child_coord)
+            child_coord_copy = ((pred_pose[:3, :3] @ child_coord_copy.T) + pred_pose[:3, 3:4]).T
+            # Estimate collision status
+            num_collision = estimate_collision(child_coord_copy, parent_coord)
+            if num_collision < min_num_collision:
+                min_num_collision = num_collision
+                best_pred_pose = pred_pose
+            elif num_collision == min_num_collision and cur_seg_size > seg_size:
+                cur_seg_size = seg_size  # Choose the one with smaller seg size
+                best_pred_pose = pred_pose
         # Refine pose
         # child_coord_complete, child_normal_complete = complete_shape(child_coord, padding=padding)
         # pred_pose = icp_pose_refine(parent_coord, child_coord_complete, parent_normal, child_normal_complete, pred_pose, max_iter=max_iter, vis=vis, radius=corr_radius, dot_threshold=dot_threshold)
@@ -814,13 +829,13 @@ def main(args: config_util.AttrDict) -> None:
 
         ############################################## Visualize the results ##############################################
         # exit(0)
-        transformed_child1 = util.transform_pcd(child_pcd_guess, pred_pose)
+        transformed_child1 = util.transform_pcd(child_pcd_guess, best_pred_pose)
 
         with recorder.meshcat_scene_lock:
             util.meshcat_pcd_show(mc_vis, child_pcd_guess, color=[255, 0, 0], name="scene/child_pcd_guess")
             util.meshcat_pcd_show(mc_vis, transformed_child1, color=[255, 255, 0], name="scene/child_pcd_predict")
 
-        relative_trans = pred_pose
+        relative_trans = best_pred_pose
 
         child_obj_id = pc_master_dict["child"]["pb_obj_id"][0]
         start_child_pose = np.concatenate(pb_client.get_body_state(child_obj_id)[:2]).tolist()

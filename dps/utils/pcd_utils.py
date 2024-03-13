@@ -282,3 +282,47 @@ def icp_pose_refine(coord1, coord2, normal1, normal2, pose_init, max_iter, vis: 
             pcd2.paint_uniform_color([0.7, 0.1, 0.1])
             o3d.visualization.draw_geometries([pcd1, pcd2])
     return pose_init
+
+
+def estimate_collision(coord1, coord2):
+    """Estimate the collision status between two objects. pcd1 must be convex, but pcd2 can be concave."""
+    # Compute the minimal bounding box for pcd1
+    pcd1 = o3d.geometry.PointCloud()
+    pcd1.points = o3d.utility.Vector3dVector(coord1)
+    bbox1 = pcd1.get_minimal_oriented_bounding_box()
+    # Rotate pcd2 to the same frame as pcd1
+    R = bbox1.R
+    t = bbox1.center
+    pose = np.eye(4)
+    pose[:3, :3] = R
+    pose[:3, 3] = t
+    pose_inv = np.linalg.inv(pose)
+    coord2 = (pose_inv[:3, :3] @ coord2.T).T + pose_inv[:3, 3]
+    pcd1.transform(pose_inv)
+    # Create an axis-aligned bounding box for pcd1
+    bbox1_o3d = pcd1.get_axis_aligned_bounding_box()
+
+    # R = bbox1.R.T
+    # coord2 = (R @ coord2.T).T
+    # Count the number of points in pcd2 that are inside the bounding box of pcd1
+    bbox1_min = bbox1_o3d.get_min_bound()
+    bbox1_max = bbox1_o3d.get_max_bound()
+    inside_indices = np.where(
+        (coord2[:, 0] >= bbox1_min[0])
+        & (coord2[:, 0] <= bbox1_max[0])
+        & (coord2[:, 1] >= bbox1_min[1])
+        & (coord2[:, 1] <= bbox1_max[1])
+        & (coord2[:, 2] >= bbox1_min[2])
+        & (coord2[:, 2] <= bbox1_max[2])
+    )[0]
+    # # Visualize the result
+    # pcd1.paint_uniform_color([0.1, 0.1, 0.7])
+    # pcd2 = o3d.geometry.PointCloud()
+    # pcd2.points = o3d.utility.Vector3dVector(coord2)
+    # colors = np.zeros_like(coord2).astype(np.float64)
+    # colors[inside_indices] = [0.7, 0.1, 0.1]
+    # pcd2.colors = o3d.utility.Vector3dVector(colors)
+    # origin = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1)
+    # bbox1_o3d.color = (1, 0, 0)
+    # o3d.visualization.draw_geometries([pcd1, pcd2, origin, bbox1_o3d])
+    return inside_indices.shape[0]
