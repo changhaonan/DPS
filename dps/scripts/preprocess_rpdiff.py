@@ -242,7 +242,7 @@ def build_dataset_rpdiff(data_dir, cfg, task_name: str, vis: bool = False, do_sc
         parent_pose_s, child_pose_s = parse_child_parent(data["multi_obj_start_obj_pose"])
         _, child_pose_f = parse_child_parent(data["multi_obj_final_obj_pose"])
 
-        if task_name == "stack_can_in_cabinet":
+        if task_name == "can_in_cabinet":
             parent_pose_s = [parent_pose_s]
             child_pose_f = [child_pose_f]
             child_pose_s = [child_pose_s]
@@ -415,8 +415,12 @@ def build_dataset_superpoint(data_dir, cfg, task_name: str, vis: bool = False, f
         target_label = -np.ones((target_coord.shape[0],), dtype=np.float32)  # -1: not nearby, 1: nearby
         nearyby_radius = cfg.PREPROCESS.NEARBY_RADIUS
         use_soft_label = cfg.PREPROCESS.USE_SOFT_LABEL
+        num_point_lower_bound = cfg.PREPROCESS.NUM_POINT_LOW_BOUND
         anchor_nearby_indices, anchor_nearby_distances = compute_nearby_pcd(anchor_coord, target_coord, radius=nearyby_radius)
         anchor_label = -np.ones((anchor_coord.shape[0],), dtype=np.float32)  # -1: not nearby, 1: nearby
+        if len(anchor_nearby_indices) <= num_point_lower_bound or target_coord.shape[0] <= num_point_lower_bound:
+            continue
+
         if not use_soft_label:
             anchor_label[anchor_nearby_indices] = 1.0
         else:
@@ -425,6 +429,8 @@ def build_dataset_superpoint(data_dir, cfg, task_name: str, vis: bool = False, f
             target_pcd = o3d.geometry.PointCloud()
             target_pcd.points = o3d.utility.Vector3dVector(target_coord)
             target_pcd.normals = o3d.utility.Vector3dVector(target_normal)
+            target_bbox = target_pcd.get_axis_aligned_bounding_box()
+            target_bbox.color = (1, 1, 0)
             anchor_pcd = o3d.geometry.PointCloud()
             anchor_pcd.normals = o3d.utility.Vector3dVector(anchor_normal)
             anchor_pcd.points = o3d.utility.Vector3dVector(anchor_coord)
@@ -433,24 +439,24 @@ def build_dataset_superpoint(data_dir, cfg, task_name: str, vis: bool = False, f
             anchor_color[anchor_nearby_indices, :] = [1, 0, 0]
             anchor_pcd.normals = o3d.utility.Vector3dVector(anchor_normal)
             anchor_pcd.colors = o3d.utility.Vector3dVector(anchor_color)
-            o3d.visualization.draw_geometries([target_pcd])
-            # Visualize by superpoint average
-            superpoint_layer0 = anchor_super_index[:, 0]
-            num_superpoint = np.max(superpoint_layer0) + 1
-            superpoint_list = []
-            for _i in range(num_superpoint):
-                print(f"Superpoint {_i} has {np.sum(superpoint_layer0 == _i)} points")
-                superpoint_indices = np.where(superpoint_layer0 == _i)[0]
-                if len(superpoint_indices) == 0:
-                    continue
-                superpoint_pcd = o3d.geometry.PointCloud()
-                superpoint_pcd.points = o3d.utility.Vector3dVector(anchor_coord[superpoint_indices])
-                # superpoint_color = np.mean(anchor_color[superpoint_indices], axis=0)
-                # superpoint_pcd.paint_uniform_color(superpoint_color)
-                random_color = np.random.uniform(0, 1, size=(3,))
-                superpoint_pcd.paint_uniform_color(random_color)
-                superpoint_list.append(superpoint_pcd)
-            o3d.visualization.draw_geometries(superpoint_list)
+            o3d.visualization.draw_geometries([anchor_pcd, target_pcd, target_bbox])
+            # # Visualize by superpoint average
+            # superpoint_layer0 = anchor_super_index[:, 0]
+            # num_superpoint = np.max(superpoint_layer0) + 1
+            # superpoint_list = []
+            # for _i in range(num_superpoint):
+            #     print(f"Superpoint {_i} has {np.sum(superpoint_layer0 == _i)} points")
+            #     superpoint_indices = np.where(superpoint_layer0 == _i)[0]
+            #     if len(superpoint_indices) == 0:
+            #         continue
+            #     superpoint_pcd = o3d.geometry.PointCloud()
+            #     superpoint_pcd.points = o3d.utility.Vector3dVector(anchor_coord[superpoint_indices])
+            #     # superpoint_color = np.mean(anchor_color[superpoint_indices], axis=0)
+            #     # superpoint_pcd.paint_uniform_color(superpoint_color)
+            #     random_color = np.random.uniform(0, 1, size=(3,))
+            #     superpoint_pcd.paint_uniform_color(random_color)
+            #     superpoint_list.append(superpoint_pcd)
+            # o3d.visualization.draw_geometries(superpoint_list)
         # Compute correspondence matrix
         corr = compute_corr_radius(anchor_coord, target_coord, radius=nearyby_radius)
 
@@ -484,17 +490,13 @@ def build_dataset_superpoint(data_dir, cfg, task_name: str, vis: bool = False, f
 if __name__ == "__main__":
     # Parse arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument("--task_name", type=str, default="book_in_bookshelf", help="stack_can_in_cabinet, book_in_bookshelf, mug_on_rack_multi")
+    parser.add_argument("--task_name", type=str, default="can_in_cabinet", help="can_in_cabinet, book_in_bookshelf, mug_on_rack_multi")
     parser.add_argument("--data_type", type=str, default="superpoint", help="real, rpdiff, superpoint")
     parser.add_argument("--filter_key", type=str, default=None)
     parser.add_argument("--vis", action="store_true")
     args = parser.parse_args()
     # Prepare path
-    data_path_dict = {
-        "stack_can_in_cabinet": "/home/harvey/Project/dps/dps/external/rpdiff/data/task_demos/can_in_cabinet_stack/task_name_stack_can_in_cabinet",
-        "book_in_bookshelf": "/home/harvey/Data/rpdiff_V3/book_in_bookshelf",
-        "mug_on_rack_multi": "/home/harvey/Project/dps/dps/external/rpdiff/data/task_demos/mug_on_rack_multi_large_proc_gen_demos/task_name_mug_on_rack_multi",
-    }
+    data_path_dict = {"can_in_cabinet": "/home/harvey/Data/rpdiff_V3/can_in_cabinet", "book_in_bookshelf": "/home/harvey/Data/rpdiff_V3/book_in_bookshelf"}
     task_name = args.task_name
     data_dir = data_path_dict[task_name]
     root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

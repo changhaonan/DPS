@@ -523,7 +523,7 @@ if __name__ == "__main__":
     dataset_name = "data_rdiff"
     split = "test"
     root_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    task_name = "book_in_bookshelf"  # "stack_can_in_cabinet, book_in_bookshelf, mug_on_rack_multi"
+    task_name = "can_in_cabinet"  # "can_in_cabinet, book_in_bookshelf, mug_on_rack_multi"
     cfg_file = os.path.join(root_path, "config", f"pose_transformer_rpdiff_{task_name}.py")
     cfg = LazyConfig.load(cfg_file)
 
@@ -548,7 +548,7 @@ if __name__ == "__main__":
     add_normals = cfg.DATALOADER.ADD_NORMALS
     add_colors = cfg.DATALOADER.ADD_COLORS
     corr_radius = cfg.DATALOADER.CORR_RADIUS
-
+    use_shape_complete = cfg.DATALOADER.USE_SHAPE_COMPLETE
     # Load dataset & data loader
     if cfg.ENV.GOAL_TYPE == "multimodal":
         dataset_folder = "data_multimodal"
@@ -596,6 +596,7 @@ if __name__ == "__main__":
         rot_axis=rot_axis,
         knn_k=knn_k,
         corr_radius=corr_radius,
+        use_shape_complete=use_shape_complete,
     )
     dataset.set_mode("train")
 

@@ -87,3 +87,4 @@ You need to install `pytorch3d`, `superpoint`.
 - [x] Improving the bbox points.
 - [x] We can augment the pose registration with superpoint-augmentation; randomly dropping or superpoint.
 - [ ] We can also apply a range filter.
+- [ ] Fix the segmentation fault. (I guess the output pose is wrong or something like that)

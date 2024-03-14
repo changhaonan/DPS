@@ -1,8 +1,16 @@
 ENV = dict(
-    TASK_NAME="book_in_bookshelf",
+    TASK_NAME="can_in_cabinet",
     GOAL_TYPE="superpoint",  # rpdiff, superpoint
 )
-PREPROCESS = dict(GRID_SIZE=0.01, TARGET_RESCALE=1.0, NUM_POINT_LOW_BOUND=40, NUM_POINT_HIGH_BOUND=400, NEARBY_RADIUS=0.03, USE_SOFT_LABEL=True)
+PREPROCESS = dict(
+    GRID_SIZE=0.005,
+    TARGET_RESCALE=3.0,
+    ANCHOR_RESCALE=1.0,
+    NUM_POINT_LOW_BOUND=20,
+    NUM_POINT_HIGH_BOUND=400,
+    NEARBY_RADIUS=0.03,
+    USE_SOFT_LABEL=True,
+)
 
 DATALOADER = dict(
     BATCH_SIZE=4,
@@ -10,7 +18,8 @@ DATALOADER = dict(
     ADD_NORMALS=True,
     ADD_COLORS=False,
     CORR_RADIUS=0.05,
-    TARGET_PADDING=0.2,  # train with 0.1 or 0.0, infer with 0.2
+    TARGET_PADDING=0.1,  # train with 0.1 or 0.0, infer with 0.2
+    USE_SHAPE_COMPLETE=True,
     AUGMENTATION=dict(
         IS_ELASTIC_DISTORTION=False,
         ELASTIC_DISTORTION_GRANULARITY=1.0,
@@ -33,7 +42,7 @@ DATALOADER = dict(
     ),
     SUPER_POINT=[
         "experiment=semantic/scannet.yaml",
-        "datamodule.voxel=0.02",
+        "datamodule.voxel=0.01",
         "datamodule.pcp_regularization=[0.01, 0.1]",
         "datamodule.pcp_spatial_weight=[0.1, 0.1]",
         "datamodule.pcp_cutoff=[10, 10]",
@@ -50,8 +59,8 @@ TRAIN = dict(
 MODEL = dict(
     DIFFUSION_PROCESS="ddpm",
     NUM_DIFFUSION_ITERS=100,
-    SEG_PROB_THRESH=0.5,
-    SEG_NUM_THRESH=100,
+    SEG_PROB_THRESH=-0.3,
+    SEG_NUM_THRESH=20,
     NOISE_NET=dict(
         NAME="PCDSEGNOISENET",
         INIT_ARGS=dict(

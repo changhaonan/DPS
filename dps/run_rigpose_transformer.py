@@ -20,7 +20,7 @@ if __name__ == "__main__":
     argparser = argparse.ArgumentParser()
     argparser.add_argument("--seed", type=int, default=0)
     argparser.add_argument("--random_index", type=int, default=0)
-    argparser.add_argument("--task_name", type=str, default="book_in_bookshelf", help="stack_can_in_cabinet, book_in_bookshelf")
+    argparser.add_argument("--task_name", type=str, default="can_in_cabinet", help="can_in_cabinet, book_in_bookshelf")
     args = argparser.parse_args()
     # Set seed
     torch.manual_seed(args.seed)

@@ -31,6 +31,8 @@ class DPSEvaluator:
         self.seg_cfg = seg_cfg
         self.act_cfg = act_cfg
         self.batch_size = min(seg_cfg.DATALOADER.BATCH_SIZE, act_cfg.DATALOADER.BATCH_SIZE)
+        self.seg_prob_thresh = seg_cfg.MODEL.SEG_PROB_THRESH
+        self.seg_num_thresh = seg_cfg.MODEL.SEG_NUM_THRESH
         # Build segmentation model
         net_name = seg_cfg.MODEL.NOISE_NET.NAME
         net_init_args = seg_cfg.MODEL.NOISE_NET.INIT_ARGS[net_name]
@@ -69,7 +71,9 @@ class DPSEvaluator:
         seg_list = []
         for _i in range(max_try):
             pred_anchor_label, anchor_coord, anchor_normal, anchor_feat = self.seg_model.predict(batch=batch, check_batch_idx=check_batch_idx, vis=vis, batch_size=self.batch_size)
-            seg_list += self.seg_model.seg_and_rank(anchor_coord, pred_anchor_label, normal=anchor_normal, feat=anchor_feat, crop_strategy=crop_strategy)
+            seg_list += self.seg_model.seg_and_rank(
+                anchor_coord, pred_anchor_label, normal=anchor_normal, feat=anchor_feat, crop_strategy=crop_strategy, prob_thresh=self.seg_prob_thresh, num_thresh=self.seg_num_thresh
+            )
             if len(seg_list) >= act_batch_size:
                 break
             else:
@@ -172,7 +176,7 @@ if __name__ == "__main__":
     argparser = argparse.ArgumentParser()
     argparser.add_argument("--seed", type=int, default=0)
     argparser.add_argument("--random_index", type=int, default=0)
-    argparser.add_argument("--task_name", type=str, default="book_in_bookshelf", help="stack_can_in_cabinet, book_in_bookshelf, mug_on_rack_multi")
+    argparser.add_argument("--task_name", type=str, default="can_in_cabinet", help="can_in_cabinet, book_in_bookshelf, mug_on_rack_multi")
     args = argparser.parse_args()
     # Set seed
     torch.manual_seed(args.seed)
@@ -181,8 +185,8 @@ if __name__ == "__main__":
     random.seed(args.seed)
     np.random.seed(args.seed)
     # Load config
-    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    device = torch.device("cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # device = torch.device("cpu")
     task_name = args.task_name
     root_path = os.path.dirname((os.path.abspath(__file__)))
     cfg_file = os.path.join(root_path, "config", f"pose_transformer_rpdiff_{task_name}.py")
@@ -194,7 +198,7 @@ if __name__ == "__main__":
     act_cfg.DATALOADER.BATCH_SIZE = 32
     seg_cfg.MODEL.NOISE_NET.NAME = "PCDSAMNOISENET"
     seg_cfg.DATALOADER.AUGMENTATION.CROP_PCD = False
-    seg_cfg.DATALOADER.BATCH_SIZE = 8
+    seg_cfg.DATALOADER.BATCH_SIZE = 4
 
     # Load dataset & data loader
     train_dataset, val_dataset, test_dataset = build_rpdiff_dataset(root_path, seg_cfg)
@@ -208,26 +212,34 @@ if __name__ == "__main__":
     raw_data_file_list = os.listdir(raw_data_dir)
     raw_data_file_list = [os.path.join(raw_data_dir, f) for f in raw_data_file_list]
     rpdiff_helper = RpdiffHelper(
-        downsample_voxel_size=seg_cfg.PREPROCESS.GRID_SIZE, scale=seg_cfg.PREPROCESS.TARGET_RESCALE, batch_size=seg_cfg.DATALOADER.BATCH_SIZE, superpoint_cfg=seg_cfg.DATALOADER.SUPER_POINT
+        downsample_voxel_size=seg_cfg.PREPROCESS.GRID_SIZE,
+        target_scale=seg_cfg.PREPROCESS.TARGET_RESCALE,
+        anchor_scale=seg_cfg.PREPROCESS.ANCHOR_RESCALE,
+        batch_size=seg_cfg.DATALOADER.BATCH_SIZE,
+        superpoint_cfg=seg_cfg.DATALOADER.SUPER_POINT,
     )
 
     # Build evaluator
     evaluator = DPSEvaluator(root_path, seg_cfg, act_cfg, device)
-
+    do_vis = True
     # Testing raw material
     for i in range(40):
         if not use_raw_data:
             batch = next(iter(val_data_loader))
+            # Remove target pose from batch
+            batch.pop("target_pose", None)
         else:
             data_file = next(iter(raw_data_file_list))
             data = read_rpdiff_data(data_file)
-            batch = rpdiff_helper.process_data(target_coord=data["target_coord"], target_normal=data["target_normal"], anchor_coord=data["anchor_coord"], anchor_normal=data["anchor_normal"])
+            batch = rpdiff_helper.process_data(
+                target_coord=data["target_coord"], target_normal=data["target_normal"], anchor_coord=data["anchor_coord"], anchor_normal=data["anchor_normal"], vis=do_vis
+            )
         if i < 2:
             continue
 
         # Perform segmentation
         check_batch_idx = 1
-        pred_pose_list, seg_size_list = evaluator.process(batch, check_batch_idx=check_batch_idx, vis=False)
+        pred_pose_list, seg_size_list = evaluator.process(batch, check_batch_idx=check_batch_idx, vis=do_vis)
 
         # Visualize on whole
         target_pcd = o3d.geometry.PointCloud()

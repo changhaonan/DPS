@@ -128,7 +128,7 @@ def main(args: config_util.AttrDict) -> None:
     # Overriding config
     act_cfg.MODEL.NOISE_NET.NAME = "RGTModel"
     act_cfg.DATALOADER.AUGMENTATION.CROP_PCD = True
-    act_cfg.DATALOADER.BATCH_SIZE = 32
+    act_cfg.DATALOADER.BATCH_SIZE = 8
     seg_cfg.MODEL.NOISE_NET.NAME = "PCDSAMNOISENET"
     seg_cfg.DATALOADER.AUGMENTATION.CROP_PCD = False
     seg_cfg.DATALOADER.BATCH_SIZE = 8
@@ -138,7 +138,7 @@ def main(args: config_util.AttrDict) -> None:
     # RPdiff helper
     rpdiff_helper = RpdiffHelper(
         downsample_voxel_size=seg_cfg.PREPROCESS.GRID_SIZE,
-        scale=seg_cfg.PREPROCESS.TARGET_RESCALE,
+        anchor_scale=seg_cfg.PREPROCESS.TARGET_RESCALE,
         batch_size=seg_cfg.DATALOADER.BATCH_SIZE,
         target_padding=seg_cfg.DATALOADER.TARGET_PADDING,
         superpoint_cfg=seg_cfg.DATALOADER.SUPER_POINT,
@@ -813,9 +813,13 @@ def main(args: config_util.AttrDict) -> None:
             elif num_collision == min_num_collision and cur_seg_size > seg_size:
                 cur_seg_size = seg_size  # Choose the one with smaller seg size
                 best_pred_pose = pred_pose
-        # Refine pose
-        # child_coord_complete, child_normal_complete = complete_shape(child_coord, padding=padding)
-        # pred_pose = icp_pose_refine(parent_coord, child_coord_complete, parent_normal, child_normal_complete, pred_pose, max_iter=max_iter, vis=vis, radius=corr_radius, dot_threshold=dot_threshold)
+        
+        # Santiy check the resulting pose
+        if best_pred_pose is None or np.isnan(best_pred_pose).any() or np.isinf(best_pred_pose).any():
+            print("No valid pose found....")
+        else:
+            print(f"Best pred pose: {best_pred_pose}")
+
         # # [DEBUG] Check in full shape
         # anchor_pcd = o3d.geometry.PointCloud()
         # anchor_pcd.points = o3d.utility.Vector3dVector(parent_coord_original)

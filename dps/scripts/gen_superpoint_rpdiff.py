@@ -19,14 +19,23 @@ from src.utils import init_config
 
 log = logging.getLogger(__name__)
 from detectron2.config import LazyConfig
+import argparse
+
 
 if __name__ == "__main__":
+    # Parse arguments
+    argparser = argparse.ArgumentParser()
+    argparser.add_argument("--seed", type=int, default=0)
+    argparser.add_argument("--task_name", type=str, default="can_in_cabinet", help="stack_can_in_cabinet, book_in_bookshelf, mug_on_rack_multi")
+    args = argparser.parse_args()
+
     # Parse task cfg
-    task_name = "book_in_bookshelf"
+    task_name = args.task_name
     root_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     task_cfg_file = os.path.join(root_path, "config", f"pose_transformer_rpdiff_{task_name}.py")
     task_cfg = LazyConfig.load(task_cfg_file)
-    scale = task_cfg.PREPROCESS.TARGET_RESCALE
+    target_scale = task_cfg.PREPROCESS.TARGET_RESCALE
+    anchor_scale = task_cfg.PREPROCESS.ANCHOR_RESCALE
     downsample_voxel_size = task_cfg.PREPROCESS.GRID_SIZE
     # Parse the configs using hydra
     cfg = init_config(overrides=task_cfg.DATALOADER.SUPER_POINT)
@@ -36,10 +45,9 @@ if __name__ == "__main__":
     spt = SuperPointTool(pre_transform=datamodule.pre_transform)
     # Load rpdiff data
     data_path_dict = {
-        "stack_can_in_cabinet": "/home/harvey/Project/dps/dps/external/rpdiff/data/task_demos/can_in_cabinet_stack/task_name_stack_can_in_cabinet",
+        "can_in_cabinet": "/home/harvey/Data/rpdiff_V3/can_in_cabinet",
         "book_in_bookshelf": "/home/harvey/Data/rpdiff_V3/book_in_bookshelf",
     }
-    task_name = "book_in_bookshelf"
     data_dir = data_path_dict[task_name]
     data_file_list = os.listdir(data_dir)
     data_file_list = [f for f in data_file_list if f.endswith(".npz")]
@@ -69,6 +77,15 @@ if __name__ == "__main__":
             # Sanity check
             if has_outlier(parent_pcd_s) or has_outlier(child_pcd_s):
                 raise ValueError("Outliers detected in the point cloud")
+            
+            # parent_pcd_s, child_pcd_s = parse_child_parent(data["multi_obj_start_pcd"])
+            # child_pcd_o3d = o3d.geometry.PointCloud()
+            # child_pcd_o3d.points = o3d.utility.Vector3dVector(child_pcd_s)
+            # o3d.visualization.draw_geometries([child_pcd_o3d])
+            # parent_pcd_o3d = o3d.geometry.PointCloud()
+            # parent_pcd_o3d.points = o3d.utility.Vector3dVector(parent_pcd_s)
+            # o3d.visualization.draw_geometries([parent_pcd_o3d])
+            
             # Process parent_pcd_s
             p_points = np.array(parent_pcd_s)
             c_points = np.array(child_pcd_s)
@@ -77,10 +94,10 @@ if __name__ == "__main__":
             p_normals = np.array(parent_normal_s)
             c_normals = np.array(child_normal_s)
 
-            p_super_point_data = spt.gen_superpoint(p_points, p_colors, p_normals, scale=scale, vis=False)
-            c_super_point_data = spt.gen_superpoint(c_points, c_colors, c_normals, scale=scale, vis=False)
+            p_super_point_data = spt.gen_superpoint(p_points, p_colors, p_normals, scale=anchor_scale, vis=False)
+            c_super_point_data = spt.gen_superpoint(c_points, c_colors, c_normals, scale=target_scale, vis=False)
 
-            visualize_superpoint(p_super_point_data)
+            # visualize_superpoint(p_super_point_data)
             super_point_dict[data_file] = {
                 "parent": p_super_point_data,
                 "child": c_super_point_data,

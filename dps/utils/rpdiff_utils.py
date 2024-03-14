@@ -158,8 +158,9 @@ def post_filter_rpdiff(pred_pose: np.ndarray, samples: list, collision_threshold
 class RpdiffHelper:
     """RpdiffHelper; directly loading from raw point cloud data"""
 
-    def __init__(self, scale=1.0, downsample_voxel_size=0.02, batch_size: int = 8, target_padding=0.2, superpoint_cfg: list = []) -> None:
-        self.scale = scale
+    def __init__(self, target_scale=1.0, anchor_scale=1.0, downsample_voxel_size=0.02, batch_size: int = 8, target_padding=0.2, superpoint_cfg: list = []) -> None:
+        self.target_scale = target_scale
+        self.anchor_scale = anchor_scale
         self.downsample_voxel_size = downsample_voxel_size
         self.batch_size = batch_size
         cfg = init_config(overrides=superpoint_cfg)
@@ -178,10 +179,10 @@ class RpdiffHelper:
         target_coord, target_color, target_normal = downsample_points(reorient_data["target_coord"], None, reorient_data["target_normal"], self.downsample_voxel_size)
         anchor_coord, anchor_color, anchor_normal = downsample_points(reorient_data["anchor_coord"], None, reorient_data["anchor_normal"], self.downsample_voxel_size)
         # Gen superpoint
-        anchor_superpoint = self.spt.gen_superpoint(anchor_coord, anchor_color, anchor_normal, scale=self.scale, vis=False)
+        anchor_superpoint = self.spt.gen_superpoint(anchor_coord, anchor_color, anchor_normal, scale=self.anchor_scale, vis=kwargs.get("vis", False))
         # visualize_superpoint(anchor_superpoint)
         # Complete shape
-        target_coord, target_normal = complete_shape(target_coord, padding=self.target_padding, strategy="bbox", vis=False)
+        target_coord, target_normal = complete_shape(target_coord, padding=self.target_padding, strategy="bbox", vis=kwargs.get("vis", False))
         target_feat = np.zeros((target_coord.shape[0], len(f_keys)), dtype=np.float32)
 
         anchor_feat = []

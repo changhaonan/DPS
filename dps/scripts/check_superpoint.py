@@ -34,7 +34,7 @@ def visualize_rpdiff(superpoint_path):
         c_superpoint_data = superpoint_data["child"]
         p_superpoint_data = superpoint_data["parent"]
 
-        # visualize_superpoint(c_superpoint_data)
+        visualize_superpoint(c_superpoint_data)
         visualize_superpoint(p_superpoint_data)
 
 
@@ -50,14 +50,14 @@ def visualize_anet3d(superpoint_path, split="train"):
 
 if __name__ == "__main__":
     data_path_dict = {
-        "stack_can_in_cabinet": "/home/harvey/Project/dps/dps/external/rpdiff/data/task_demos/can_in_cabinet_stack/task_name_stack_can_in_cabinet",
+        "can_in_cabinet": "/home/harvey/Data/rpdiff_V3/can_in_cabinet",
         "book_in_bookshelf": "/home/harvey/Data/rpdiff_V3/book_in_bookshelf",
         "anet3d": "/home/harvey/Data/Anet3D",
     }
 
-    task_name = "book_in_bookshelf"  # "book_in_bookshelf", "anet3d"
+    task_name = "can_in_cabinet"  # "book_in_bookshelf", "can_in_cabinet" "anet3d"
     data_dir = data_path_dict[task_name]
-    if task_name in ["stack_can_in_cabinet", "book_in_bookshelf"]:
+    if task_name in ["can_in_cabinet", "book_in_bookshelf"]:
         visualize_rpdiff(data_dir)
     elif task_name == "anet3d":
         visualize_anet3d(data_dir)

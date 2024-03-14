@@ -372,10 +372,8 @@ class PCDDModel:
         return f"PCDD_model_{crop_strategy}"
 
     ############################### UTILS ################################
-    def seg_and_rank(self, coord, prob, crop_strategy="none", **kwargs):
+    def seg_and_rank(self, coord, prob, crop_strategy="none", prob_thresh=0.5, num_thresh=20, **kwargs):
         """Segment point and rank by probability"""
-        prob_thresh = 0.5
-        num_thresh = 100
         seg_list = []
         for i in range(coord.shape[0]):
             prob_i = prob[i]
