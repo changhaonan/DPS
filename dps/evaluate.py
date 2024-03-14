@@ -65,7 +65,7 @@ class DPSEvaluator:
 
     def process(self, batch, check_batch_idx: int = 1, vis: bool = False, **kwargs):
         crop_strategy = kwargs.get("crop_strategy", "bbox")
-        max_try = kwargs.get("max_try", 10)
+        max_try = kwargs.get("max_try", 20)
         act_batch_size = 8
         # Perform segmentation
         seg_list = []
@@ -78,7 +78,13 @@ class DPSEvaluator:
                 break
             else:
                 print(f"Retry segmentation {_i}...")
-
+        if len(seg_list) < act_batch_size and len(seg_list) > 0:
+            print(f"Warning: only {len(seg_list)} segments are found.")
+            # Fill with last segment
+            seg_list += [seg_list[-1]] * (act_batch_size - len(seg_list))
+        elif len(seg_list) == 0:
+            print(f"Warning: no segment is found.")
+            return [], []
         # DEBUG: visualize the segmentation result
         if vis:
             anchor_pcd = o3d.geometry.PointCloud()
@@ -208,7 +214,8 @@ if __name__ == "__main__":
     # Raw data
     use_raw_data = True
     raw_data_dir = "/home/harvey/Data/rpdiff_V3"
-    raw_data_dir = os.path.join(raw_data_dir, task_name)
+    # raw_data_dir = os.path.join(raw_data_dir, task_name)
+    raw_data_dir = "/home/harvey/Project/DPS/dps/external/rpdiff/eval_data/eval_data/can_on_cabinet_nosc/seed_0/failed"  # Focus on failed casess
     raw_data_file_list = os.listdir(raw_data_dir)
     raw_data_file_list = [os.path.join(raw_data_dir, f) for f in raw_data_file_list]
     rpdiff_helper = RpdiffHelper(
@@ -217,6 +224,7 @@ if __name__ == "__main__":
         anchor_scale=seg_cfg.PREPROCESS.ANCHOR_RESCALE,
         batch_size=seg_cfg.DATALOADER.BATCH_SIZE,
         superpoint_cfg=seg_cfg.DATALOADER.SUPER_POINT,
+        complete_strategy=seg_cfg.DATALOADER.COMPLETE_STRATEGY,
     )
 
     # Build evaluator

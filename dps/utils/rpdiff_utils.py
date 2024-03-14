@@ -20,17 +20,25 @@ def parse_child_parent(arr):
 def read_rpdiff_data(data_file=None, target_coord=None, anchor_coord=None, target_normal=None, anchor_normal=None, **kwargs):
     if data_file is not None:
         raw_data = np.load(data_file, allow_pickle=True)
-        parent_pcd_s, child_pcd_s = parse_child_parent(raw_data["multi_obj_start_pcd"])
-        parent_normal_s, child_normal_s = parse_child_parent(raw_data["normals"])
-        parent_color_s, child_color_s = parse_child_parent(raw_data["colors"])
-        data = {
-            "target_coord": child_pcd_s,
-            "target_normal": child_normal_s,
-            "target_color": child_color_s,
-            "anchor_coord": parent_pcd_s,
-            "anchor_normal": parent_normal_s,
-            "anchor_color": parent_color_s,
-        }
+        if "multi_obj_start_pcd" in raw_data:
+            parent_pcd_s, child_pcd_s = parse_child_parent(raw_data["multi_obj_start_pcd"])
+            parent_normal_s, child_normal_s = parse_child_parent(raw_data["normals"])
+            parent_color_s, child_color_s = parse_child_parent(raw_data["colors"])
+            data = {
+                "target_coord": child_pcd_s,
+                "target_normal": child_normal_s,
+                "target_color": child_color_s,
+                "anchor_coord": parent_pcd_s,
+                "anchor_normal": parent_normal_s,
+                "anchor_color": parent_color_s,
+            }
+        elif "parent_pcd" in raw_data:
+            data = {
+                "target_coord": raw_data["child_pcd"],
+                "target_normal": raw_data["child_normal"],
+                "anchor_coord": raw_data["parent_pcd"],
+                "anchor_normal": raw_data["parent_normal"],
+            }
     else:
         data = {
             "target_coord": target_coord,
@@ -158,13 +166,14 @@ def post_filter_rpdiff(pred_pose: np.ndarray, samples: list, collision_threshold
 class RpdiffHelper:
     """RpdiffHelper; directly loading from raw point cloud data"""
 
-    def __init__(self, target_scale=1.0, anchor_scale=1.0, downsample_voxel_size=0.02, batch_size: int = 8, target_padding=0.2, superpoint_cfg: list = []) -> None:
+    def __init__(self, target_scale=1.0, anchor_scale=1.0, downsample_voxel_size=0.02, batch_size: int = 8, target_padding=0.2, superpoint_cfg: list = [], complete_strategy="bbox") -> None:
         self.target_scale = target_scale
         self.anchor_scale = anchor_scale
         self.downsample_voxel_size = downsample_voxel_size
         self.batch_size = batch_size
         cfg = init_config(overrides=superpoint_cfg)
         self.target_padding = target_padding
+        self.complete_strategy = complete_strategy
         # Instantiate the datamodule
         datamodule = hydra.utils.instantiate(cfg.datamodule)
         # Initialize SuperPointTool
@@ -182,7 +191,8 @@ class RpdiffHelper:
         anchor_superpoint = self.spt.gen_superpoint(anchor_coord, anchor_color, anchor_normal, scale=self.anchor_scale, vis=kwargs.get("vis", False))
         # visualize_superpoint(anchor_superpoint)
         # Complete shape
-        target_coord, target_normal = complete_shape(target_coord, padding=self.target_padding, strategy="bbox", vis=kwargs.get("vis", False))
+        if self.complete_strategy != "none":
+            target_coord, target_normal = complete_shape(target_coord, padding=self.target_padding, strategy=self.complete_strategy, vis=kwargs.get("vis", False))
         target_feat = np.zeros((target_coord.shape[0], len(f_keys)), dtype=np.float32)
 
         anchor_feat = []

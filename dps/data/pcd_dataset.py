@@ -54,6 +54,7 @@ class PcdPairDataset(Dataset):
         rot_axis: str = "xy",
         corr_radius: float = 0.1,
         use_shape_complete: bool = True,
+        complete_strategy: str = "bbox",
         **kwargs,
     ):
         # Set parameters
@@ -80,6 +81,7 @@ class PcdPairDataset(Dataset):
         self.rot_axis = rot_axis
         self.corr_radius = corr_radius
         self.use_shape_complete = use_shape_complete
+        self.complete_strategy = complete_strategy
         # Load data
         data_list = []
         for data_file in data_file_list:
@@ -151,7 +153,7 @@ class PcdPairDataset(Dataset):
             anchor_color = None
         if self.use_shape_complete:
             # Compute convex hull of target object
-            target_coord, target_normal = pcd_utils.complete_shape(target_coord, strategy="bbox", vis=False)
+            target_coord, target_normal = pcd_utils.complete_shape(target_coord, strategy=self.complete_strategy, vis=False)
             target_feat = np.zeros((target_coord.shape[0], target_feat.shape[1]), dtype=np.float32)
 
         # Augment data
@@ -181,7 +183,8 @@ class PcdPairDataset(Dataset):
                 anchor_nearby_size = (np.max(anchor_nearby, axis=0) - np.min(anchor_nearby, axis=0)) / 2.0
                 if crop_indicator > self.random_crop_prob:
                     crop_center = anchor_nearby.mean(axis=0) + (np.random.rand(3) * 2 * self.crop_noise - self.crop_noise)
-                    crop_size = (0.7 + 0.6 * np.random.rand(1)) * anchor_nearby_size
+                    # crop_size = (0.7 + 0.6 * np.random.rand(1)) * anchor_nearby_size # book_in_bookshelf
+                    crop_size = (0.7 + 1.0 * np.random.rand(1)) * anchor_nearby_size  # can_in_cabinet
                     # crop_size = anchor_nearby_size
                     is_valid_crop = True
                 else:
@@ -549,6 +552,8 @@ if __name__ == "__main__":
     add_colors = cfg.DATALOADER.ADD_COLORS
     corr_radius = cfg.DATALOADER.CORR_RADIUS
     use_shape_complete = cfg.DATALOADER.USE_SHAPE_COMPLETE
+    complete_strategy = cfg.DATALOADER.COMPLETE_STRATEGY
+
     # Load dataset & data loader
     if cfg.ENV.GOAL_TYPE == "multimodal":
         dataset_folder = "data_multimodal"
@@ -571,8 +576,8 @@ if __name__ == "__main__":
     print("Data loaded from: ", data_file_dict)
 
     # Override config
-    crop_pcd = True
-    add_normals = True
+    # crop_pcd = True
+    # add_normals = True
     volume_augmentations_path = os.path.join(root_path, "config", volume_augmentation_file) if volume_augmentation_file is not None else None
     dataset = PcdPairDataset(
         data_file_list=[data_file_dict["train"]],
@@ -597,6 +602,7 @@ if __name__ == "__main__":
         knn_k=knn_k,
         corr_radius=corr_radius,
         use_shape_complete=use_shape_complete,
+        complete_strategy=complete_strategy,
     )
     dataset.set_mode("train")
 

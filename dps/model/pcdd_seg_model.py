@@ -19,7 +19,8 @@ from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.callbacks import ModelCheckpoint
 from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
 from dps.model.network.pcd_seg_noise_net import PcdSegNoiseNet
-from dps.model.network.geometric import batch2offset, offset2batch, to_dense_batch, to_flat_batch
+from dps.model.network.geometric import batch2offset, offset2batch, to_dense_batch, to_flat_batch, voxel_grid
+from torch_scatter import segment_csr
 from box import Box
 import yaml
 import torch_scatter
@@ -54,6 +55,7 @@ class LPcdSegDiffusion(L.LightningModule):
             # our network predicts noise (instead of denoised action)
             prediction_type="epsilon",
         )
+        self.use_voxel_superpoint = cfg.MODEL.USE_VOXEL_SUPERPOINT
         # Logging
         self.sample_batch = None
         self.batch_size = cfg.DATALOADER.BATCH_SIZE
@@ -72,7 +74,10 @@ class LPcdSegDiffusion(L.LightningModule):
         offset = batch2offset(batch_idx)
         points = [coord, feat, offset]
         label = batch["anchor_label"]
-        super_index = batch["anchor_super_index"][:, self.superpoint_layer]  # Use selected layer
+        if self.use_voxel_superpoint:
+            super_index = self.voxel_grid_as_super_index(points)
+        else:
+            super_index = batch["anchor_super_index"][:, self.superpoint_layer]  # Use selected layer
         # Do one-time encoding
         enc_points = self.pcd_noise_net.encode_pcd(points, attrs={"normal": normal})
         # Scatter to super_index
@@ -125,7 +130,15 @@ class LPcdSegDiffusion(L.LightningModule):
             batch = self.sample_batch
             batch_idx = batch["anchor_batch_index"]
             label = batch["anchor_label"]
-            super_index = batch["anchor_super_index"][:, self.superpoint_layer]  # Use the first super index
+            if self.use_voxel_superpoint:
+                coord = batch["anchor_coord"]
+                feat = batch["anchor_feat"]
+                batch_idx = batch["anchor_batch_index"]
+                offset = batch2offset(batch_idx)
+                points = [coord, feat, offset]
+                super_index = self.voxel_grid_as_super_index(points)
+            else:
+                super_index = batch["anchor_super_index"][:, self.superpoint_layer]  # Use the first super index
             super_label = torch_scatter.scatter(label, super_index, dim=0, reduce="mean").unsqueeze(1)
             super_batch_index = torch_scatter.scatter(batch_idx, super_index, dim=0, reduce="mean")
             batch_super_label, super_mask = to_dense_batch(super_label, super_batch_index)
@@ -159,7 +172,10 @@ class LPcdSegDiffusion(L.LightningModule):
         batch_idx = batch["anchor_batch_index"]
         offset = batch2offset(batch_idx)
         points = [coord, feat, offset]
-        super_index = batch["anchor_super_index"][:, self.superpoint_layer]  # Use selected layer
+        if self.use_voxel_superpoint:
+            super_index = self.voxel_grid_as_super_index(points)
+        else:
+            super_index = batch["anchor_super_index"][:, self.superpoint_layer]  # Use selected layer
         # Do one-time encoding
         enc_points = self.pcd_noise_net.encode_pcd(points, attrs={"normal": normal})
         # Scatter to super_index
@@ -229,6 +245,20 @@ class LPcdSegDiffusion(L.LightningModule):
             image = viewer.capture_screen_float_buffer(do_render=True)
             viewer.destroy_window()
             return np.asarray(image)
+
+    def voxel_grid_as_super_index(self, points):
+        """Voxel grid as super index."""
+        coord, feat, offset = points
+        batch = offset2batch(offset)  # [0000...1111]
+        start = segment_csr(
+            coord,
+            torch.cat([batch.new_zeros(1), torch.cumsum(batch.bincount(), dim=0)]),  # [     0,  76806, 156806]
+            reduce="min",
+        )  # [2, 3]
+        cluster = voxel_grid(pos=coord - start[batch], size=self.grid_size, batch=batch, start=0)  # torch_geometric  # grid_size = 0.1
+        unique, cluster, counts = torch.unique(cluster, sorted=True, return_inverse=True, return_counts=True)
+        _, sorted_cluster_indices = torch.sort(cluster, stable=True)
+        return sorted_cluster_indices
 
 
 class PCDDModel:

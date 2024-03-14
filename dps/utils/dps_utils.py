@@ -25,6 +25,8 @@ def build_rpdiff_dataset(root_path, cfg):
     add_normals = cfg.DATALOADER.ADD_NORMALS
     add_colors = cfg.DATALOADER.ADD_COLORS
     corr_radius = cfg.DATALOADER.CORR_RADIUS
+    use_shape_complete = cfg.DATALOADER.USE_SHAPE_COMPLETE
+    complete_strategy = cfg.DATALOADER.COMPLETE_STRATEGY
     # Load dataset & data loader
     if "real" in cfg.ENV.GOAL_TYPE:
         dataset_folder = "data_real"
@@ -70,6 +72,8 @@ def build_rpdiff_dataset(root_path, cfg):
         rot_axis=rot_axis,
         knn_k=knn_k,
         corr_radius=corr_radius,
+        use_shape_complete=use_shape_complete,
+        complete_strategy=complete_strategy,
     )
     val_dataset = PcdPairDataset(
         data_file_list=[data_file_dict["val"]],
@@ -93,6 +97,8 @@ def build_rpdiff_dataset(root_path, cfg):
         rot_axis=rot_axis,
         knn_k=knn_k,
         corr_radius=corr_radius,
+        use_shape_complete=use_shape_complete,
+        complete_strategy=complete_strategy,
     )
     test_dataset = PcdPairDataset(
         data_file_list=[data_file_dict["test"]],
@@ -116,5 +122,7 @@ def build_rpdiff_dataset(root_path, cfg):
         rot_axis=rot_axis,
         knn_k=knn_k,
         corr_radius=corr_radius,
+        use_shape_complete=use_shape_complete,
+        complete_strategy=complete_strategy,
     )
     return train_dataset, val_dataset, test_dataset

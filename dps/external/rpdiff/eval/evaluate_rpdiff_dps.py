@@ -120,7 +120,8 @@ def main(args: config_util.AttrDict) -> None:
     #########################################################################
     # Load cfg
     root_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-    task_name = "book_in_bookshelf"
+    # task_name = "book_in_bookshelf"
+    task_name = "can_in_cabinet"
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     cfg_file = os.path.join(root_path, "config", f"pose_transformer_rpdiff_{task_name}.py")
     act_cfg = LazyConfig.load(cfg_file)
@@ -131,17 +132,18 @@ def main(args: config_util.AttrDict) -> None:
     act_cfg.DATALOADER.BATCH_SIZE = 8
     seg_cfg.MODEL.NOISE_NET.NAME = "PCDSAMNOISENET"
     seg_cfg.DATALOADER.AUGMENTATION.CROP_PCD = False
-    seg_cfg.DATALOADER.BATCH_SIZE = 8
+    seg_cfg.DATALOADER.BATCH_SIZE = 4
     # Build evaluator
     evaluator = DPSEvaluator(root_path, seg_cfg, act_cfg, device)
 
     # RPdiff helper
     rpdiff_helper = RpdiffHelper(
         downsample_voxel_size=seg_cfg.PREPROCESS.GRID_SIZE,
-        anchor_scale=seg_cfg.PREPROCESS.TARGET_RESCALE,
+        target_scale=seg_cfg.PREPROCESS.TARGET_RESCALE,
+        anchor_scale=seg_cfg.PREPROCESS.ANCHOR_RESCALE,
         batch_size=seg_cfg.DATALOADER.BATCH_SIZE,
-        target_padding=seg_cfg.DATALOADER.TARGET_PADDING,
         superpoint_cfg=seg_cfg.DATALOADER.SUPER_POINT,
+        complete_strategy=seg_cfg.DATALOADER.COMPLETE_STRATEGY,
     )
     #####################################################################################
     # load all the multi class mesh info
@@ -813,7 +815,7 @@ def main(args: config_util.AttrDict) -> None:
             elif num_collision == min_num_collision and cur_seg_size > seg_size:
                 cur_seg_size = seg_size  # Choose the one with smaller seg size
                 best_pred_pose = pred_pose
-        
+
         # Santiy check the resulting pose
         if best_pred_pose is None or np.isnan(best_pred_pose).any() or np.isinf(best_pred_pose).any():
             print("No valid pose found....")
@@ -1055,9 +1057,9 @@ def main(args: config_util.AttrDict) -> None:
 
                 exec_attempts += 1
 
-            if eval_cabinet_task:
-                stop_motion_touch = out_move_until_touch[1]
-                success_crit_dict["collision_free"] = not stop_motion_touch
+            # if eval_cabinet_task:
+            #     stop_motion_touch = out_move_until_touch[1]
+            #     success_crit_dict["collision_free"] = not stop_motion_touch
 
             safeCollisionFilterPair(
                 bodyUniqueIdA=child_obj_id,
@@ -1193,7 +1195,9 @@ def main(args: config_util.AttrDict) -> None:
             np.savez(
                 osp.join(eval_fail_dir, f"trial_{iteration}_failed.npz"),
                 parent_pcd=parent_coord_original,
+                parent_normal=parent_normal,
                 child_pcd=child_pcd_original,
+                child_normal=child_normal,
                 final_child_pcd=final_child_pcd,
             )
 
@@ -1266,7 +1270,8 @@ if __name__ == "__main__":
     """Parse input arguments"""
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("-c", "--config_fname", type=str, default="book_on_bookshelf/book_on_bookshelf_withsc.yaml", help="Name of config file")
+    # parser.add_argument("-c", "--config_fname", type=str, default="book_on_bookshelf/book_on_bookshelf_withsc.yaml", help="Name of config file")
+    parser.add_argument("-c", "--config_fname", type=str, default="can_on_cabinet/can_on_cabinet_withsc.yaml", help="Name of config file")
     parser.add_argument("-d", "--debug", action="store_true", help="If True, run in debug mode")
     parser.add_argument("-dd", "--debug_data", action="store_true", help="If True, run data loader in debug mode")
     parser.add_argument("-p", "--port_vis", type=int, default=6000, help="Port for ZMQ url (meshcat visualization)")
