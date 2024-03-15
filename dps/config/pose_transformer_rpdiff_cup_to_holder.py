@@ -1,5 +1,5 @@
 ENV = dict(
-    TASK_NAME="can_in_cabinet",
+    TASK_NAME="cup_to_holder",
     GOAL_TYPE="superpoint",  # rpdiff, superpoint
 )
 PREPROCESS = dict(
@@ -11,6 +11,7 @@ PREPROCESS = dict(
     NEARBY_RADIUS=0.03,
     USE_SOFT_LABEL=True,
 )
+
 DATALOADER = dict(
     BATCH_SIZE=4,
     NUM_WORKERS=0,  # Set to 0 if using ilab
@@ -61,8 +62,7 @@ MODEL = dict(
     NUM_DIFFUSION_ITERS=100,
     SEG_PROB_THRESH=-0.5,
     SEG_NUM_THRESH=30,
-    USE_VOXEL_SUPERPOINT=True,
-    SUPERPOINT_VOXEL_SIZE=0.05,
+    USE_VOXEL_SUPERPOINT=False,
     NOISE_NET=dict(
         NAME="PCDSEGNOISENET",
         INIT_ARGS=dict(

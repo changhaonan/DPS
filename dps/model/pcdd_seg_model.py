@@ -20,6 +20,7 @@ from lightning.pytorch.callbacks import ModelCheckpoint
 from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
 from dps.model.network.pcd_seg_noise_net import PcdSegNoiseNet
 from dps.model.network.geometric import batch2offset, offset2batch, to_dense_batch, to_flat_batch, voxel_grid
+from dps.utils.pcd_utils import visualize_point_pyramid
 from torch_scatter import segment_csr
 from box import Box
 import yaml
@@ -44,7 +45,6 @@ class LPcdSegDiffusion(L.LightningModule):
         self.num_diffusion_iters = cfg.MODEL.NUM_DIFFUSION_ITERS
         self.warm_up_step = cfg.TRAIN.WARM_UP_STEP
         self.rot_axis = cfg.DATALOADER.AUGMENTATION.ROT_AXIS
-        self.superpoint_layer = cfg.MODEL.SUPERPOINT_LAYER
         self.noise_scheduler = DDPMScheduler(
             num_train_timesteps=self.num_diffusion_iters,
             # the choise of beta schedule has big impact on performance
@@ -55,7 +55,9 @@ class LPcdSegDiffusion(L.LightningModule):
             # our network predicts noise (instead of denoised action)
             prediction_type="epsilon",
         )
+        self.superpoint_layer = cfg.MODEL.SUPERPOINT_LAYER
         self.use_voxel_superpoint = cfg.MODEL.USE_VOXEL_SUPERPOINT
+        self.superpoint_voxel_size = cfg.MODEL.SUPERPOINT_VOXEL_SIZE
         # Logging
         self.sample_batch = None
         self.batch_size = cfg.DATALOADER.BATCH_SIZE
@@ -246,19 +248,23 @@ class LPcdSegDiffusion(L.LightningModule):
             viewer.destroy_window()
             return np.asarray(image)
 
-    def voxel_grid_as_super_index(self, points):
+    def voxel_grid_as_super_index(self, points, vis=False):
         """Voxel grid as super index."""
         coord, feat, offset = points
-        batch = offset2batch(offset)  # [0000...1111]
-        start = segment_csr(
-            coord,
-            torch.cat([batch.new_zeros(1), torch.cumsum(batch.bincount(), dim=0)]),  # [     0,  76806, 156806]
-            reduce="min",
-        )  # [2, 3]
-        cluster = voxel_grid(pos=coord - start[batch], size=self.grid_size, batch=batch, start=0)  # torch_geometric  # grid_size = 0.1
+        batch = offset2batch(offset)
+        start = segment_csr(coord, torch.cat([batch.new_zeros(1), torch.cumsum(batch.bincount(), dim=0)]), reduce="min")
+        cluster = voxel_grid(pos=coord - start[batch], size=self.superpoint_voxel_size, batch=batch, start=0)
         unique, cluster, counts = torch.unique(cluster, sorted=True, return_inverse=True, return_counts=True)
         _, sorted_cluster_indices = torch.sort(cluster, stable=True)
-        return sorted_cluster_indices
+        # Check the result
+        if vis:
+            # Convert to batch
+            batch_coord = to_dense_batch(coord, batch)[0]
+            batch_cluster = to_dense_batch(cluster, batch)[0]
+
+            visualize_point_pyramid(pos=batch_coord[0, :], normal=None, cluster_indices=[batch_cluster[0, :]])
+
+        return cluster.detach()
 
 
 class PCDDModel:

@@ -9,6 +9,7 @@ import torch_scatter
 import math
 import numpy as np
 from timm.models.vision_transformer import PatchEmbed, Attention, Mlp
+from dps.utils.pcd_utils import visualize_point_pyramid
 
 
 class PositionEmbeddingCoordsSine(nn.Module):
@@ -285,3 +286,19 @@ class PcdSegNoiseNet(nn.Module):
         # Decode
         noisy_t = self.proj_down(noisy_t)
         return noisy_t
+
+    ################################# DEBUG #################################
+    def visualize_pcd_pyramids(self, all_points, cluster_indices, point_attrs=None):
+        coord, feat, _ = all_points[-1]
+        normal = point_attrs[-1]["normal"] if "normal" in point_attrs[-1] else None
+        offsets = [a[2] for a in all_points[1:]]
+        cluster_pyramid = [to_dense_batch(cluster_idex, offset2batch(offset))[0] for (cluster_idex, offset) in zip(cluster_indices, offsets)]
+        # Reverse the anchor cluster pyramid
+        cluster_pyramid = cluster_pyramid[::-1]
+        coord = to_dense_batch(coord, offset2batch(offsets[-1]))[0]
+        normal = to_dense_batch(normal, offset2batch(offsets[-1]))[0] if normal is not None else None
+        for i in range(coord.shape[0]):
+            normal_i = normal[i] if normal is not None else None
+            visualize_point_pyramid(coord[i], normal_i, [a[i] for a in cluster_pyramid])
+            if i >= 1:
+                break

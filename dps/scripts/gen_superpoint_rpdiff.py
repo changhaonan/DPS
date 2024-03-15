@@ -26,7 +26,7 @@ if __name__ == "__main__":
     # Parse arguments
     argparser = argparse.ArgumentParser()
     argparser.add_argument("--seed", type=int, default=0)
-    argparser.add_argument("--task_name", type=str, default="can_in_cabinet", help="stack_can_in_cabinet, book_in_bookshelf, mug_on_rack_multi")
+    argparser.add_argument("--task_name", type=str, default="cup_to_holder", help="stack_can_in_cabinet, book_in_bookshelf, cup_to_holder")
     args = argparser.parse_args()
 
     # Parse task cfg
@@ -47,6 +47,8 @@ if __name__ == "__main__":
     data_path_dict = {
         "can_in_cabinet": "/home/harvey/Data/rpdiff_V3/can_in_cabinet",
         "book_in_bookshelf": "/home/harvey/Data/rpdiff_V3/book_in_bookshelf",
+        "cup_to_holder": "/home/harvey/Data/rpdiff_V3/cup_to_holder",
+        "lid_to_cup": "/home/harvey/Data/rpdiff_V3/lid_to_cup",
     }
     data_dir = data_path_dict[task_name]
     data_file_list = os.listdir(data_dir)
@@ -77,7 +79,7 @@ if __name__ == "__main__":
             # Sanity check
             if has_outlier(parent_pcd_s) or has_outlier(child_pcd_s):
                 raise ValueError("Outliers detected in the point cloud")
-            
+
             # parent_pcd_s, child_pcd_s = parse_child_parent(data["multi_obj_start_pcd"])
             # child_pcd_o3d = o3d.geometry.PointCloud()
             # child_pcd_o3d.points = o3d.utility.Vector3dVector(child_pcd_s)
@@ -85,7 +87,7 @@ if __name__ == "__main__":
             # parent_pcd_o3d = o3d.geometry.PointCloud()
             # parent_pcd_o3d.points = o3d.utility.Vector3dVector(parent_pcd_s)
             # o3d.visualization.draw_geometries([parent_pcd_o3d])
-            
+
             # Process parent_pcd_s
             p_points = np.array(parent_pcd_s)
             c_points = np.array(child_pcd_s)
