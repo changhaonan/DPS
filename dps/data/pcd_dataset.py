@@ -526,7 +526,7 @@ if __name__ == "__main__":
     dataset_name = "data_rdiff"
     split = "test"
     root_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    task_name = "can_in_cabinet"  # "can_in_cabinet, book_in_bookshelf, mug_on_rack_multi"
+    task_name = "cup_to_holder"  # "can_in_cabinet, book_in_bookshelf, mug_on_rack_multi"
     cfg_file = os.path.join(root_path, "config", f"pose_transformer_rpdiff_{task_name}.py")
     cfg = LazyConfig.load(cfg_file)
 

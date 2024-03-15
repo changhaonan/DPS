@@ -12,6 +12,7 @@ from dps.data.pcd_datalodaer import PcdPairCollator
 from dps.model.network.rigpose_transformer import RigPoseTransformer
 from dps.model.network.pcd_seg_noise_net import PcdSegNoiseNet
 from dps.model.pcdd_seg_model import PCDDModel
+from dps.model.pcdc_seg_model import PCDCModel
 from dps.model.rgt_model import RGTModel
 from detectron2.config import LazyConfig
 from torch.utils.data.dataset import random_split
@@ -26,7 +27,7 @@ import copy
 class DPSEvaluator:
     """Diffusion point cloud segmentation and action evaluation."""
 
-    def __init__(self, root_path, seg_cfg, act_cfg, device) -> None:
+    def __init__(self, root_path, seg_cfg, act_cfg, device, seg_type="diffusion") -> None:
         self.device = device
         self.seg_cfg = seg_cfg
         self.act_cfg = act_cfg
@@ -37,7 +38,13 @@ class DPSEvaluator:
         net_name = seg_cfg.MODEL.NOISE_NET.NAME
         net_init_args = seg_cfg.MODEL.NOISE_NET.INIT_ARGS[net_name]
         seg_net = PcdSegNoiseNet(**net_init_args)
-        self.seg_model = PCDDModel(seg_cfg, seg_net)
+        self.seg_type = seg_type
+        if seg_type == "diffusion":
+            self.seg_model = PCDDModel(seg_cfg, seg_net)
+        elif seg_type == "classification":
+            self.seg_model = PCDCModel(seg_cfg, seg_net)
+        else:
+            raise ValueError(f"Unsupported seg_type: {seg_type}")
         seg_net_name = seg_cfg.MODEL.NOISE_NET.NAME
         save_dir = os.path.join(root_path, "test_data", seg_cfg.ENV.TASK_NAME, "checkpoints", seg_net_name)
         save_path = os.path.join(save_dir, self.seg_model.experiment_name())
@@ -66,7 +73,7 @@ class DPSEvaluator:
     def process(self, batch, check_batch_idx: int = 1, vis: bool = False, **kwargs):
         crop_strategy = kwargs.get("crop_strategy", "bbox")
         max_try = kwargs.get("max_try", 20)
-        act_batch_size = 8
+        act_batch_size = 8 if self.seg_type == "diffusion" else 1  # For classification, we can only process one at a time
         # Perform segmentation
         seg_list = []
         for _i in range(max_try):
@@ -84,7 +91,9 @@ class DPSEvaluator:
             seg_list += [seg_list[-1]] * (act_batch_size - len(seg_list))
         elif len(seg_list) == 0:
             print(f"Warning: no segment is found.")
-            return [], []
+            pred_pose_list = [np.eye(4)] * act_batch_size
+            seg_size_list = [0] * act_batch_size
+            return pred_pose_list, seg_size_list
         # DEBUG: visualize the segmentation result
         if vis:
             anchor_pcd = o3d.geometry.PointCloud()
@@ -180,9 +189,10 @@ if __name__ == "__main__":
     torch.set_float32_matmul_precision("high")
     # Parse arguments
     argparser = argparse.ArgumentParser()
-    argparser.add_argument("--seed", type=int, default=0)
-    argparser.add_argument("--random_index", type=int, default=0)
-    argparser.add_argument("--task_name", type=str, default="can_in_cabinet", help="can_in_cabinet, book_in_bookshelf, mug_on_rack_multi")
+    argparser.add_argument("--seed", type=int, default=1)
+    argparser.add_argument("--random_index", type=int, default=1)
+    argparser.add_argument("--task_name", type=str, default="book_in_bookshelf", help="can_in_cabinet, book_in_bookshelf, mug_on_rack_multi")
+    argparser.add_argument("--seg_type", type=str, default="diffusion", help="diffusion, classification")
     args = argparser.parse_args()
     # Set seed
     torch.manual_seed(args.seed)
@@ -191,9 +201,10 @@ if __name__ == "__main__":
     random.seed(args.seed)
     np.random.seed(args.seed)
     # Load config
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    # device = torch.device("cpu")
+    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cpu")
     task_name = args.task_name
+    seg_type = args.seg_type
     root_path = os.path.dirname((os.path.abspath(__file__)))
     cfg_file = os.path.join(root_path, "config", f"pose_transformer_rpdiff_{task_name}.py")
     act_cfg = LazyConfig.load(cfg_file)
@@ -204,7 +215,7 @@ if __name__ == "__main__":
     act_cfg.DATALOADER.BATCH_SIZE = 32
     seg_cfg.MODEL.NOISE_NET.NAME = "PCDSAMNOISENET"
     seg_cfg.DATALOADER.AUGMENTATION.CROP_PCD = False
-    seg_cfg.DATALOADER.BATCH_SIZE = 4
+    seg_cfg.DATALOADER.BATCH_SIZE = 16
 
     # Load dataset & data loader
     train_dataset, val_dataset, test_dataset = build_rpdiff_dataset(root_path, seg_cfg)
@@ -214,8 +225,8 @@ if __name__ == "__main__":
     # Raw data
     use_raw_data = True
     raw_data_dir = "/home/harvey/Data/rpdiff_V3"
-    # raw_data_dir = os.path.join(raw_data_dir, task_name)
-    raw_data_dir = "/home/harvey/Project/DPS/dps/external/rpdiff/eval_data/eval_data/can_on_cabinet_nosc/seed_0/failed"  # Focus on failed casess
+    raw_data_dir = os.path.join(raw_data_dir, task_name)
+    # raw_data_dir = "/home/harvey/Project/DPS/dps/external/rpdiff/eval_data/eval_data/can_on_cabinet_nosc/seed_0/failed"  # Focus on failed casess
     raw_data_file_list = os.listdir(raw_data_dir)
     raw_data_file_list = [os.path.join(raw_data_dir, f) for f in raw_data_file_list]
     rpdiff_helper = RpdiffHelper(
@@ -228,7 +239,7 @@ if __name__ == "__main__":
     )
 
     # Build evaluator
-    evaluator = DPSEvaluator(root_path, seg_cfg, act_cfg, device)
+    evaluator = DPSEvaluator(root_path, seg_cfg, act_cfg, device, seg_type=seg_type)
     do_vis = True
     # Testing raw material
     for i in range(40):
@@ -239,6 +250,12 @@ if __name__ == "__main__":
         else:
             data_file = next(iter(raw_data_file_list))
             data = read_rpdiff_data(data_file)
+            # Visualize row data
+            anchor_pcd = o3d.geometry.PointCloud()
+            anchor_pcd.points = o3d.utility.Vector3dVector(data["anchor_coord"])
+            anchor_pcd.normals = o3d.utility.Vector3dVector(data["anchor_normal"])
+            anchor_pcd.paint_uniform_color([234.0 / 255.0, 182.0 / 255.0, 118.0 / 255.0])
+            o3d.visualization.draw_geometries([anchor_pcd])
             batch = rpdiff_helper.process_data(
                 target_coord=data["target_coord"], target_normal=data["target_normal"], anchor_coord=data["anchor_coord"], anchor_normal=data["anchor_normal"], vis=do_vis
             )

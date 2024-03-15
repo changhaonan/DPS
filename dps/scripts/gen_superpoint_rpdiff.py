@@ -80,13 +80,12 @@ if __name__ == "__main__":
             if has_outlier(parent_pcd_s) or has_outlier(child_pcd_s):
                 raise ValueError("Outliers detected in the point cloud")
 
-            # parent_pcd_s, child_pcd_s = parse_child_parent(data["multi_obj_start_pcd"])
+            ## Visualize
             # child_pcd_o3d = o3d.geometry.PointCloud()
             # child_pcd_o3d.points = o3d.utility.Vector3dVector(child_pcd_s)
-            # o3d.visualization.draw_geometries([child_pcd_o3d])
             # parent_pcd_o3d = o3d.geometry.PointCloud()
             # parent_pcd_o3d.points = o3d.utility.Vector3dVector(parent_pcd_s)
-            # o3d.visualization.draw_geometries([parent_pcd_o3d])
+            # o3d.visualization.draw_geometries([parent_pcd_o3d, child_pcd_o3d])
 
             # Process parent_pcd_s
             p_points = np.array(parent_pcd_s)
@@ -126,9 +125,9 @@ if __name__ == "__main__":
     # Do train, val, test split
     valid_data_file_list = [f for f in data_file_list if f not in failed_lists]
     random.shuffle(valid_data_file_list)
-    train_data_file_list = valid_data_file_list[: int(0.7 * len(valid_data_file_list))]
-    val_data_file_list = valid_data_file_list[int(0.7 * len(valid_data_file_list)) : int(0.85 * len(valid_data_file_list))]
-    test_data_file_list = valid_data_file_list[int(0.85 * len(valid_data_file_list)) :]
+    train_data_file_list = valid_data_file_list[: int(0.9 * len(valid_data_file_list))]
+    val_data_file_list = valid_data_file_list[int(0.9 * len(valid_data_file_list)) : int(1.0 * len(valid_data_file_list))]
+    test_data_file_list = valid_data_file_list[int(0.9 * len(valid_data_file_list)) :]
 
     # Save in train_split.txt, train_val_split.txt, test_split.txt
     split_info_dir = os.path.join(data_dir, "split_info")

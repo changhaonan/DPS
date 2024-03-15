@@ -120,8 +120,9 @@ def main(args: config_util.AttrDict) -> None:
     #########################################################################
     # Load cfg
     root_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-    # task_name = "book_in_bookshelf"
-    task_name = "can_in_cabinet"
+    task_name = "book_in_bookshelf"
+    # task_name = "can_in_cabinet"
+    seg_type = "classification"
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     cfg_file = os.path.join(root_path, "config", f"pose_transformer_rpdiff_{task_name}.py")
     act_cfg = LazyConfig.load(cfg_file)
@@ -134,7 +135,7 @@ def main(args: config_util.AttrDict) -> None:
     seg_cfg.DATALOADER.AUGMENTATION.CROP_PCD = False
     seg_cfg.DATALOADER.BATCH_SIZE = 4
     # Build evaluator
-    evaluator = DPSEvaluator(root_path, seg_cfg, act_cfg, device)
+    evaluator = DPSEvaluator(root_path, seg_cfg, act_cfg, device, seg_type=seg_type)
 
     # RPdiff helper
     rpdiff_helper = RpdiffHelper(
@@ -1270,8 +1271,8 @@ if __name__ == "__main__":
     """Parse input arguments"""
 
     parser = argparse.ArgumentParser()
-    # parser.add_argument("-c", "--config_fname", type=str, default="book_on_bookshelf/book_on_bookshelf_withsc.yaml", help="Name of config file")
-    parser.add_argument("-c", "--config_fname", type=str, default="can_on_cabinet/can_on_cabinet_withsc.yaml", help="Name of config file")
+    parser.add_argument("-c", "--config_fname", type=str, default="book_on_bookshelf/book_on_bookshelf_withsc.yaml", help="Name of config file")
+    # parser.add_argument("-c", "--config_fname", type=str, default="can_on_cabinet/can_on_cabinet_withsc.yaml", help="Name of config file")
     parser.add_argument("-d", "--debug", action="store_true", help="If True, run in debug mode")
     parser.add_argument("-dd", "--debug_data", action="store_true", help="If True, run data loader in debug mode")
     parser.add_argument("-p", "--port_vis", type=int, default=6000, help="Port for ZMQ url (meshcat visualization)")

@@ -1,6 +1,7 @@
 ENV = dict(
     TASK_NAME="can_in_cabinet",
     GOAL_TYPE="superpoint",  # rpdiff, superpoint
+    SEG_TYPE="classification",  # diffusion, classification
 )
 PREPROCESS = dict(
     GRID_SIZE=0.005,
@@ -61,7 +62,7 @@ MODEL = dict(
     NUM_DIFFUSION_ITERS=100,
     SEG_PROB_THRESH=-0.5,
     SEG_NUM_THRESH=30,
-    USE_VOXEL_SUPERPOINT=True,
+    USE_VOXEL_SUPERPOINT=False,
     SUPERPOINT_VOXEL_SIZE=0.05,
     NOISE_NET=dict(
         NAME="PCDSEGNOISENET",
@@ -112,6 +113,7 @@ MODEL = dict(
                 num_sam_blocks=2,
                 num_dit_blocks=2,
                 seg_knn=8,
+                out_dim=2 if ENV["SEG_TYPE"] == "classification" else 1,
             ),
         ),
     ),

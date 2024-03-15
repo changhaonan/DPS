@@ -1,8 +1,17 @@
 ENV = dict(
     TASK_NAME="book_in_bookshelf",
     GOAL_TYPE="superpoint",  # rpdiff, superpoint
+    SEG_TYPE="diffusion",  # diffusion, classification
 )
-PREPROCESS = dict(GRID_SIZE=0.01, TARGET_RESCALE=1.0, NUM_POINT_LOW_BOUND=40, NUM_POINT_HIGH_BOUND=400, NEARBY_RADIUS=0.03, USE_SOFT_LABEL=True)
+PREPROCESS = dict(
+    GRID_SIZE=0.01,
+    TARGET_RESCALE=3.0,
+    ANCHOR_RESCALE=1.0,
+    NUM_POINT_LOW_BOUND=40,
+    NUM_POINT_HIGH_BOUND=400,
+    NEARBY_RADIUS=0.03,
+    USE_SOFT_LABEL=True,
+)
 
 DATALOADER = dict(
     BATCH_SIZE=4,
@@ -11,6 +20,8 @@ DATALOADER = dict(
     ADD_COLORS=False,
     CORR_RADIUS=0.05,
     TARGET_PADDING=0.2,  # train with 0.1 or 0.0, infer with 0.2
+    USE_SHAPE_COMPLETE=True,
+    COMPLETE_STRATEGY="axis_aligned_bbox",
     AUGMENTATION=dict(
         IS_ELASTIC_DISTORTION=False,
         ELASTIC_DISTORTION_GRANULARITY=1.0,
@@ -52,6 +63,8 @@ MODEL = dict(
     NUM_DIFFUSION_ITERS=100,
     SEG_PROB_THRESH=0.5,
     SEG_NUM_THRESH=100,
+    USE_VOXEL_SUPERPOINT=False,
+    SUPERPOINT_VOXEL_SIZE=0.05,
     NOISE_NET=dict(
         NAME="PCDSEGNOISENET",
         INIT_ARGS=dict(
@@ -101,6 +114,7 @@ MODEL = dict(
                 num_sam_blocks=2,
                 num_dit_blocks=2,
                 seg_knn=8,
+                out_dim=2 if ENV["SEG_TYPE"] == "classification" else 1,
             ),
         ),
     ),

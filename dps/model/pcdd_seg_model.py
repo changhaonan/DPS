@@ -165,7 +165,7 @@ class LPcdSegDiffusion(L.LightningModule):
         if (self.current_epoch + 1) % 5 == 0:
             self.sample_batch = None  # Reset sample batch
 
-    def forward(self, batch):
+    def forward(self, batch, vis=False):
         """Inference for PCD diffusion model."""
         # Assemble input
         coord = batch["anchor_coord"]
@@ -194,6 +194,7 @@ class LPcdSegDiffusion(L.LightningModule):
             # initialize action from Guassian noise
             noisy_label = torch.randn((batch_coord.shape[0], batch_coord.shape[1], 1), device=self.device)
             for k in self.noise_scheduler.timesteps:
+                print(f"Diffusion step {k.detach().cpu().item()}/{self.num_diffusion_iters}...")
                 timesteps = torch.tensor([k], device=self.device).to(torch.long).repeat(batch_coord.shape[0])
                 noisy_label, _ = to_flat_batch(noisy_label, super_index_mask)
                 # predict noise residual
@@ -201,6 +202,26 @@ class LPcdSegDiffusion(L.LightningModule):
                 noisy_label, _ = to_dense_batch(noisy_label, super_batch_index)
                 # inverse diffusion step (remove noise)
                 noisy_label = self.noise_scheduler.step(model_output=noise_pred, timestep=k, sample=noisy_label).prev_sample
+                # Visualize diffusion process
+                if vis and (k.detach().cpu().item() % 10 == 0 or k.detach().cpu().item() == self.num_diffusion_iters - 1 or k.detach().cpu().item() == 1):
+                    # Convert to full point cloud
+                    full_anchor_coord = to_dense_batch(coord, batch_idx)[0]
+                    full_anchor_normal = to_dense_batch(normal, batch_idx)[0]
+                    full_anchor_label = to_flat_batch(noisy_label, super_index_mask)[0]
+                    full_anchor_label = full_anchor_label[super_index]
+                    full_anchor_label = to_dense_batch(full_anchor_label, batch_idx)[0]
+                    for i in range(batch_coord.shape[0]):
+                        pred_label_i = full_anchor_label[i]
+                        anchor_coord_i = full_anchor_coord[i]
+                        anchor_normal_i = full_anchor_normal[i]
+                        image = self.view_result(anchor_coord_i, pred_label_i, anchor_normal_i, vis_3d=False)
+                        # Save image
+                        # cv2.imshow("diffusion", image)
+                        # cv2.waitKey(0)
+                        # save_path = "/home/harvey/Project/DPS/log"
+                        # image = np.clip(image * 255, 0, 255).astype(np.uint8)
+                        # image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+                        # cv2.imwrite(f"{save_path}/diffusion_{k.detach().cpu().item()}_batch_{i}.png", image)
         else:
             raise ValueError(f"Diffusion process {self.diffusion_process} not supported.")
 
@@ -223,17 +244,25 @@ class LPcdSegDiffusion(L.LightningModule):
         scheduler = LambdaLR(optimizer, lr_lambda=lr_foo)
         return [optimizer], [scheduler]
 
-    def view_result(self, batch_coord: torch.Tensor, pred_label: torch.Tensor, vis_3d: bool = False):
+    def view_result(self, batch_coord: torch.Tensor, pred_label: torch.Tensor, batch_normal=None, vis_3d: bool = False):
         """Render label image."""
         pred_label = pred_label.detach().cpu().numpy()
         batch_coord = batch_coord.detach().cpu().numpy()
+        batch_normal = batch_normal.detach().cpu().numpy() if batch_normal is not None else None
         pcd = o3d.geometry.PointCloud()
         pcd.points = o3d.utility.Vector3dVector(batch_coord)
-        color = (1 + pred_label) * np.array([0.0, 0.5, 0.0]) + (1 - pred_label) * np.array([0.5, 0.0, 0.0])
-        color = np.clip(color, 0, 1)
+        if batch_normal is not None:
+            pcd.normals = o3d.utility.Vector3dVector(batch_normal)
+        # CLip label to [-1, 1]
+        # pred_label = np.clip(pred_label, -1, 0.0)
+        # pred_label = (pred_label + 1) / 2.0 - 1.0
+        pred_label[pred_label > 0] = 1
+        # Do jet color using label from [-1, 1]
+        color = plt.get_cmap("viridis")(pred_label.squeeze())[:, :3]
+        # color = np.clip(color, 0, 1)
         pcd.colors = o3d.utility.Vector3dVector(color)
         # Rotate the object for better view: rotate around y-axis for 90 degree & z-axis for -90 degree
-        rot = R.from_euler("z", -90, degrees=True) * R.from_euler("y", -90, degrees=True)
+        rot = R.from_euler("y", 20, degrees=True) * R.from_euler("z", -90, degrees=True) * R.from_euler("y", -70, degrees=True)
         pcd.rotate(rot.as_matrix(), center=(0, 0, 0))
         if vis_3d:
             o3d.visualization.draw_geometries([pcd])
@@ -241,8 +270,11 @@ class LPcdSegDiffusion(L.LightningModule):
         else:
             # Offscreen rendering
             viewer = o3d.visualization.Visualizer()
-            viewer.create_window(width=540, height=540, visible=False)
+            viewer.create_window(width=270, height=270, visible=False)
             viewer.add_geometry(pcd)
+            # Control visualization
+            opt = viewer.get_render_option()
+            opt.point_size = 7  # Adjust this value as needed
             # Render image
             image = viewer.capture_screen_float_buffer(do_render=True)
             viewer.destroy_window()
@@ -276,11 +308,12 @@ class PCDDModel:
         self.logger_project = cfg.LOGGER.PROJECT
         # build model
         self.pcd_noise_net = pcd_noise_net
-        self.lpcd_noise_net = LPcdSegDiffusion(pcd_noise_net, cfg).to(torch.float32)
+        if pcd_noise_net is not None:
+            self.lpcd_noise_net = LPcdSegDiffusion(pcd_noise_net, cfg)
 
     def train(self, num_epochs: int, train_data_loader, val_data_loader, save_path: str):
         # Checkpoint callback
-        checkpoint_callback = ModelCheckpoint(monitor="val_loss", dirpath=os.path.join(save_path, "checkpoints"), filename="PCDDSEG_model-{epoch:02d}-{val_loss:.4f}", save_top_k=3, mode="min")
+        checkpoint_callback = ModelCheckpoint(monitor="val_loss", dirpath=os.path.join(save_path, "checkpoints"), filename="PCDDSEG_model-{epoch:02d}-{val_loss:.4f}", save_top_k=20, mode="min")
         # Trainer
         # If not mac, using ddp_find_unused_parameters_true
         strategy = "ddp_find_unused_parameters_true" if os.uname().sysname != "Darwin" else "auto"
@@ -374,7 +407,8 @@ class PCDDModel:
         # Put to device
         for key in batch.keys():
             batch[key] = batch[key].to(self.lpcd_noise_net.device)
-        pred_label = self.lpcd_noise_net(batch)
+        vis = kwargs.get("vis", False)
+        pred_label = self.lpcd_noise_net(batch, vis=vis)
         batch_idx = batch["anchor_batch_index"]
         pred_label = to_dense_batch(pred_label, batch_idx)[0]  # to dense
 
@@ -384,9 +418,8 @@ class PCDDModel:
         anchor_batch_normal = to_dense_batch(anchor_normal, batch_idx)[0]
         anchor_feat = batch["anchor_feat"]
         anchor_batch_feat = to_dense_batch(anchor_feat, batch_idx)[0]
-        vis = kwargs.get("vis", False)
         if vis:
-            for i in range(min(pred_label.shape[0], 4)):
+            for i in range(min(pred_label.shape[0], 16)):
                 pred_label_i = pred_label[i]
                 anchord_coord_i = anchor_batch_coord[i]
                 pred_label_i = pred_label[i]

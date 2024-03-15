@@ -419,6 +419,7 @@ def build_dataset_superpoint(data_dir, cfg, task_name: str, vis: bool = False, f
         anchor_nearby_indices, anchor_nearby_distances = compute_nearby_pcd(anchor_coord, target_coord, radius=nearyby_radius)
         anchor_label = -np.ones((anchor_coord.shape[0],), dtype=np.float32)  # -1: not nearby, 1: nearby
         if len(anchor_nearby_indices) <= num_point_lower_bound or target_coord.shape[0] <= num_point_lower_bound:
+            print(f"Target pcd has {target_coord.shape[0]} points, fixed pcd has {anchor_coord.shape[0]} points, anchor_nearby_indices has {len(anchor_nearby_indices)} points.")
             continue
 
         if not use_soft_label:
@@ -490,13 +491,17 @@ def build_dataset_superpoint(data_dir, cfg, task_name: str, vis: bool = False, f
 if __name__ == "__main__":
     # Parse arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument("--task_name", type=str, default="can_in_cabinet", help="can_in_cabinet, book_in_bookshelf, mug_on_rack_multi")
+    parser.add_argument("--task_name", type=str, default="cup_to_holder", help="can_in_cabinet, book_in_bookshelf, mug_on_rack_multi")
     parser.add_argument("--data_type", type=str, default="superpoint", help="real, rpdiff, superpoint")
     parser.add_argument("--filter_key", type=str, default=None)
     parser.add_argument("--vis", action="store_true")
     args = parser.parse_args()
     # Prepare path
-    data_path_dict = {"can_in_cabinet": "/home/harvey/Data/rpdiff_V3/can_in_cabinet", "book_in_bookshelf": "/home/harvey/Data/rpdiff_V3/book_in_bookshelf"}
+    data_path_dict = {
+        "can_in_cabinet": "/home/harvey/Data/rpdiff_V3/can_in_cabinet",
+        "book_in_bookshelf": "/home/harvey/Data/rpdiff_V3/book_in_bookshelf",
+        "cup_to_holder": "/home/harvey/Data/rpdiff_V3/cup_to_holder",
+    }
     task_name = args.task_name
     data_dir = data_path_dict[task_name]
     root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

@@ -52,5 +52,7 @@ build/*
 # Logs
 log.txt
 
+log/*.png
+
 # 
 *.

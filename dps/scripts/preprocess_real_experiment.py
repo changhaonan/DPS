@@ -11,7 +11,7 @@ from scipy.spatial.transform import Rotation as R
 
 def process_anchor(anchor_pcd, z_max=0.08, z_min=0.01):
     # Remove points from anchor_pcd, z-value < z_min
-    anchor_pcd = anchor_pcd.select_by_index(np.where(np.array(anchor_pcd.points)[:, 2] > z_min)[0])
+    # anchor_pcd = anchor_pcd.select_by_index(np.where(np.array(anchor_pcd.points)[:, 2] > z_min)[0])
     # Remove points from anchor_pcd, z-value > z_max
     anchor_pcd = anchor_pcd.select_by_index(np.where(np.array(anchor_pcd.points)[:, 2] < z_max)[0])
     # Remove noises
@@ -22,7 +22,7 @@ def process_anchor(anchor_pcd, z_max=0.08, z_min=0.01):
     return anchor_pcd, anchor_pcd.get_minimal_oriented_bounding_box()
 
 
-def process_target(target_pcd, z_max=0.15, z_min=0.01):
+def process_target(target_pcd, z_max=0.2, z_min=0.01):
     # Remove points from target_pcd, z-value < z_min
     target_pcd = target_pcd.select_by_index(np.where(np.array(target_pcd.points)[:, 2] > z_min)[0])
     # Remove points from target_pcd, z-value > z_max
@@ -31,6 +31,16 @@ def process_target(target_pcd, z_max=0.15, z_min=0.01):
     target_pcd = target_pcd.voxel_down_sample(voxel_size=0.005)
     target_pcd.remove_radius_outlier(nb_points=30, radius=0.01)
     target_pcd.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.0)
+    # Do dbscan
+    labels = np.array(target_pcd.cluster_dbscan(eps=0.02, min_points=10, print_progress=False))
+    # Remove points from target_pcd, label == -1
+    target_pcd = target_pcd.select_by_index(np.where(labels != -1)[0])
+
+    # Only keep the largest cluster
+    labels = np.array(target_pcd.cluster_dbscan(eps=0.02, min_points=10, print_progress=False))
+    cluster_size = np.bincount(labels)
+    target_pcd = target_pcd.select_by_index(np.where(labels == np.argmax(cluster_size))[0])
+
     # Return bbox
     return target_pcd, target_pcd.get_minimal_oriented_bounding_box()
 
@@ -48,15 +58,16 @@ if __name__ == "__main__":
 
     # Load rpdiff data
     data_path_dict = {
-        "cup_to_holder": "/home/harvey/Data/rpdiff_V3/cup_to_holder/dataset",
-        "lid_to_cup": "/home/harvey/Data/rpdiff_V3/lid_to_cup/dataset",
+        "cup_to_holder": "/home/harvey/Data/rpdiff_V3/cup_to_holder",
+        "lid_to_cup": "/home/harvey/Data/rpdiff_V3/lid_to_cup",
     }
-    data_dir = data_path_dict[task_name]
+
+    data_dir = os.path.join(data_path_dict[task_name], "dataset")
     data_file_list = os.listdir(data_dir)
 
+    data_idx = 0
     for data_file in tqdm(data_file_list, desc="Processing Real data"):
         data = pickle.load(open(os.path.join(data_dir, data_file), "rb"))
-        ##
         dps_data = {}
         for stage in ["start", "end"]:
             whole_coord = data[stage]["points"]
@@ -130,9 +141,9 @@ if __name__ == "__main__":
             # Process anchor
             anchor_pcd, anchor_bbox = process_anchor(anchor_pcd)
             target_pcd, target_bbox = process_target(target_pcd)
-            # anchor_bbox.color = (0, 1, 0)
-            # target_bbox.color = (0, 0, 1)
-            # o3d.visualization.draw_geometries([anchor_pcd, target_pcd, table_pcd, anchor_bbox, target_bbox])
+            anchor_bbox.color = (0, 1, 0)
+            target_bbox.color = (0, 0, 1)
+            # o3d.visualization.draw_geometries([target_pcd])
             # o3d.visualization.draw_geometries([table_pcd, anchor_pcd, target_pcd, origin])
             dps_data[stage] = {
                 "anchor_coord": np.array(anchor_pcd.points),
@@ -156,36 +167,42 @@ if __name__ == "__main__":
         trans_init = np.eye(4)
         trans_init[:3, 3] = np.mean(dps_data["end"]["target_coord"], axis=0) - np.mean(dps_data["start"]["target_coord"], axis=0)
         reg_p2p = o3d.pipelines.registration.registration_icp(
-            target_pcd_s, target_pcd_g, 0.05, np.eye(4), o3d.pipelines.registration.TransformationEstimationPointToPoint(), o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=200)
+            target_pcd_s, target_pcd_g, 0.05, trans_init, o3d.pipelines.registration.TransformationEstimationPointToPoint(), o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=200)
         )
         pose = np.asarray(reg_p2p.transformation).copy()
         # Reorient everything
         # pose_inv = np.linalg.inv(pose)
         # target_pcd_s.transform(pose_inv)
         target_pcd_s.transform(pose)
-        o3d.visualization.draw_geometries([target_pcd_s, target_pcd_g])
+        anchor_pcd_g = o3d.geometry.PointCloud()
+        anchor_pcd_g.points = o3d.utility.Vector3dVector(dps_data["end"]["anchor_coord"])
+        anchor_pcd_g.normals = o3d.utility.Vector3dVector(dps_data["end"]["anchor_normal"])
+        anchor_pcd_g.colors = o3d.utility.Vector3dVector(dps_data["end"]["anchor_color"])
+        # o3d.visualization.draw_geometries([target_pcd_s, anchor_pcd_g])
 
         # Save dps_data, matching rpdiff pipeline; so we can use the same pipeline to train the model
         rpdiff_data = {}
         rpdiff_data["multi_obj_start_pcd"] = {
-            "parent": dps_data["start"]["anchor_coord"],
+            "parent": dps_data["end"]["anchor_coord"],
             "child": dps_data["start"]["target_coord"],
         }
         rpdiff_data["normals"] = {
-            "parent": dps_data["start"]["anchor_normal"],
+            "parent": dps_data["end"]["anchor_normal"],
             "child": dps_data["start"]["target_normal"],
         }
         rpdiff_data["colors"] = {
-            "parent": dps_data["start"]["anchor_color"],
+            "parent": dps_data["end"]["anchor_color"],
             "child": dps_data["start"]["target_color"],
         }
         rpdiff_data["multi_obj_start_obj_pose"] = {
-            "parent": [np.array([0, 0, 0, 1.0, 0, 0, 0])],
-            "child": [np.array([0, 0, 0, 1.0, 0, 0, 0])],
+            "parent": [np.array([0, 0, 0, 0.0, 0, 0, 1])],
+            "child": [np.array([0, 0, 0, 0.0, 0, 0, 1])],
         }
         rpdiff_data["multi_obj_final_obj_pose"] = {
-            "parent": [np.array([0, 0, 0, 1.0, 0, 0, 0])],
+            "parent": [np.array([0, 0, 0, 0.0, 0, 0, 1])],
             "child": [np.concatenate([pose[:3, 3], R.from_matrix(pose[:3, :3]).as_quat()])],
         }
 
         # Save rpdiff_data into npz
+        data_idx += 1
+        np.savez_compressed(os.path.join(data_path_dict[task_name], f"{task_name}_{data_idx}.npz"), **rpdiff_data)
