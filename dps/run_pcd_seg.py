@@ -20,9 +20,9 @@ if __name__ == "__main__":
     argparser = argparse.ArgumentParser()
     argparser.add_argument("--seed", type=int, default=0)
     argparser.add_argument("--random_index", type=int, default=0)
-    argparser.add_argument("--task_name", type=str, default="book_in_bookshelf", help="can_in_cabinet, book_in_bookshelf, mug_on_rack_multi")
-    argparser.add_argument("--seg_type", type=str, default="classification", help="diffusion, classification")
-    # argparser.add_argument("--seg_type", type=str, default="diffusion", help="diffusion, classification")
+    argparser.add_argument("--task_name", type=str, default="thing_to_holder", help="can_in_cabinet, book_in_bookshelf, mug_on_rack_multi")
+    argparser.add_argument("--seg_type", type=str, default="diffusion", help="diffusion, classification")
+    # argparser.add_argument("--seg_type", type=str, default="classification", help="diffusion, classification")
     args = argparser.parse_args()
     # Set seed
     torch.manual_seed(args.seed)
@@ -39,6 +39,7 @@ if __name__ == "__main__":
     cfg.MODEL.NOISE_NET.NAME = "PCDSAMNOISENET"
     cfg.DATALOADER.AUGMENTATION.CROP_PCD = False
     cfg.DATALOADER.BATCH_SIZE = 16
+    cfg.DATALOADER.AUGMENTATION.IS_ELASTIC_DISTORTION = False
     # Load dataset & data loader
     train_dataset, val_dataset, test_dataset = build_rpdiff_dataset(root_path, cfg)
     train_data_loader = torch.utils.data.DataLoader(train_dataset, batch_size=cfg.DATALOADER.BATCH_SIZE, shuffle=True, num_workers=cfg.DATALOADER.NUM_WORKERS, collate_fn=PcdPairCollator())

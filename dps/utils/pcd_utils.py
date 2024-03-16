@@ -6,6 +6,7 @@ import open3d as o3d
 import copy
 import torch
 import numpy as np
+import cv2
 
 
 def check_pcd_pyramid(pcd: o3d.PointCloud, grid_sizes: list[int]):
@@ -352,3 +353,19 @@ def estimate_collision(coord1, coord2):
     # bbox1_o3d.color = (1, 0, 0)
     # o3d.visualization.draw_geometries([pcd1, pcd2, origin, bbox1_o3d])
     return inside_indices.shape[0]
+
+
+def screen_shot_pcd(pcd):
+    """Take a screenshot of the point cloud."""
+    viewer = o3d.visualization.Visualizer()
+    viewer.create_window(width=270, height=270, visible=False)
+    viewer.add_geometry(pcd)
+    # Control visualization
+    opt = viewer.get_render_option()
+    opt.point_size = 7  # Adjust this value as needed
+    # Render image
+    image = viewer.capture_screen_float_buffer(do_render=True)
+    viewer.destroy_window()
+    image = (np.asarray(image) * 255.0).astype(np.uint8)
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    return image

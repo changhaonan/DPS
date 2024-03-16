@@ -7,11 +7,13 @@ import os
 import numpy as np
 from tqdm import tqdm
 from scipy.spatial.transform import Rotation as R
+from dps.utils.pcd_utils import screen_shot_pcd
+import cv2
 
 
 def process_anchor(anchor_pcd, z_max=0.08, z_min=0.01):
     # Remove points from anchor_pcd, z-value < z_min
-    # anchor_pcd = anchor_pcd.select_by_index(np.where(np.array(anchor_pcd.points)[:, 2] > z_min)[0])
+    anchor_pcd = anchor_pcd.select_by_index(np.where(np.array(anchor_pcd.points)[:, 2] > z_min)[0])
     # Remove points from anchor_pcd, z-value > z_max
     anchor_pcd = anchor_pcd.select_by_index(np.where(np.array(anchor_pcd.points)[:, 2] < z_max)[0])
     # Remove noises
@@ -49,25 +51,33 @@ if __name__ == "__main__":
     # Parse arguments
     argparser = argparse.ArgumentParser()
     argparser.add_argument("--seed", type=int, default=0)
-    argparser.add_argument("--task_name", type=str, default="cup_to_holder", help="stack_can_in_cabinet, book_in_bookshelf, cup_to_holder")
+    argparser.add_argument("--task_name", type=str, default="thing_to_holder", help="stack_can_in_cabinet, book_in_bookshelf, cup_to_holder")
     args = argparser.parse_args()
 
     # Parse task cfg
     task_name = args.task_name
     root_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+    task_name = "experiment_test"
+    subset = ["dataset"]
+    # subset = ["dataset_apple", "dataset_cup"]
     # Load rpdiff data
     data_path_dict = {
         "cup_to_holder": "/home/harvey/Data/rpdiff_V3/cup_to_holder",
         "lid_to_cup": "/home/harvey/Data/rpdiff_V3/lid_to_cup",
+        "apple_to_holder": "/home/harvey/Data/rpdiff_V3/apple_to_holder",
+        "thing_to_holder": "/home/harvey/Data/rpdiff_V3/thing_to_holder",
+        "experiment_test": "/home/harvey/Data/rpdiff_V3/experiment_test",
     }
 
-    data_dir = os.path.join(data_path_dict[task_name], "dataset")
-    data_file_list = os.listdir(data_dir)
-
+    data_file_list = []
+    for sub in subset:
+        sub_data_file_list = [f for f in os.listdir(os.path.join(data_path_dict[task_name], sub)) if f.endswith(".pkl")]
+        sub_data_file_list = [os.path.join(sub, f) for f in sub_data_file_list]
+        data_file_list.extend(sub_data_file_list)
     data_idx = 0
     for data_file in tqdm(data_file_list, desc="Processing Real data"):
-        data = pickle.load(open(os.path.join(data_dir, data_file), "rb"))
+        data = pickle.load(open(os.path.join(data_path_dict[task_name], data_file), "rb"))
         dps_data = {}
         for stage in ["start", "end"]:
             whole_coord = data[stage]["points"]
@@ -129,11 +139,11 @@ if __name__ == "__main__":
                     break
             y_axis = np.cross(z_axis, x_axis)
             center = bbox.get_center()
-            pose = np.eye(4)
-            pose[:3, :3] = np.array([x_axis, y_axis, z_axis])
-            pose[:3, 3] = center
+            icp_pose = np.eye(4)
+            icp_pose[:3, :3] = np.array([x_axis, y_axis, z_axis])
+            icp_pose[:3, 3] = center
             # Reorient everything
-            pose_inv = np.linalg.inv(pose)
+            pose_inv = np.linalg.inv(icp_pose)
             anchor_pcd.transform(pose_inv)
             target_pcd.transform(pose_inv)
             table_pcd.transform(pose_inv)
@@ -146,6 +156,7 @@ if __name__ == "__main__":
             # o3d.visualization.draw_geometries([target_pcd])
             # o3d.visualization.draw_geometries([table_pcd, anchor_pcd, target_pcd, origin])
             dps_data[stage] = {
+                "world_pose": icp_pose,
                 "anchor_coord": np.array(anchor_pcd.points),
                 "anchor_normal": np.array(anchor_pcd.normals),
                 "anchor_color": np.array(anchor_pcd.colors),
@@ -169,16 +180,25 @@ if __name__ == "__main__":
         reg_p2p = o3d.pipelines.registration.registration_icp(
             target_pcd_s, target_pcd_g, 0.05, trans_init, o3d.pipelines.registration.TransformationEstimationPointToPoint(), o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=200)
         )
-        pose = np.asarray(reg_p2p.transformation).copy()
+        icp_pose = np.asarray(reg_p2p.transformation).copy()
         # Reorient everything
         # pose_inv = np.linalg.inv(pose)
         # target_pcd_s.transform(pose_inv)
-        target_pcd_s.transform(pose)
+        target_pcd_s.transform(icp_pose)
         anchor_pcd_g = o3d.geometry.PointCloud()
         anchor_pcd_g.points = o3d.utility.Vector3dVector(dps_data["end"]["anchor_coord"])
         anchor_pcd_g.normals = o3d.utility.Vector3dVector(dps_data["end"]["anchor_normal"])
         anchor_pcd_g.colors = o3d.utility.Vector3dVector(dps_data["end"]["anchor_color"])
         # o3d.visualization.draw_geometries([target_pcd_s, anchor_pcd_g])
+
+        # Check the icp results
+        combined_pcd = target_pcd_s + anchor_pcd_g
+        image = screen_shot_pcd(combined_pcd)
+
+        # Save the image
+        save_dir = os.path.join(data_path_dict[task_name], "icp_results")
+        os.makedirs(save_dir, exist_ok=True)
+        cv2.imwrite(os.path.join(save_dir, f"{task_name}_{data_idx}.png"), image)
 
         # Save dps_data, matching rpdiff pipeline; so we can use the same pipeline to train the model
         rpdiff_data = {}
@@ -200,9 +220,11 @@ if __name__ == "__main__":
         }
         rpdiff_data["multi_obj_final_obj_pose"] = {
             "parent": [np.array([0, 0, 0, 0.0, 0, 0, 1])],
-            "child": [np.concatenate([pose[:3, 3], R.from_matrix(pose[:3, :3]).as_quat()])],
+            "child": [np.concatenate([icp_pose[:3, 3], R.from_matrix(icp_pose[:3, :3]).as_quat()])],
         }
-
         # Save rpdiff_data into npz
         data_idx += 1
         np.savez_compressed(os.path.join(data_path_dict[task_name], f"{task_name}_{data_idx}.npz"), **rpdiff_data)
+        # Save an output pose into a txt file
+        output_pose = dps_data["start"]["world_pose"] @ icp_pose
+        np.savetxt(os.path.join(data_path_dict[task_name], f"{task_name}_{data_idx}.txt"), output_pose)

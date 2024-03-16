@@ -55,6 +55,7 @@ class PcdPairDataset(Dataset):
         corr_radius: float = 0.1,
         use_shape_complete: bool = True,
         complete_strategy: str = "bbox",
+        enable_anchor_rot: bool = False,
         **kwargs,
     ):
         # Set parameters
@@ -82,6 +83,7 @@ class PcdPairDataset(Dataset):
         self.corr_radius = corr_radius
         self.use_shape_complete = use_shape_complete
         self.complete_strategy = complete_strategy
+        self.enable_anchor_rot = enable_anchor_rot
         # Load data
         data_list = []
         for data_file in data_file_list:
@@ -157,13 +159,14 @@ class PcdPairDataset(Dataset):
             target_feat = np.zeros((target_coord.shape[0], target_feat.shape[1]), dtype=np.float32)
 
         # Augment data
+        # FIXME: actually, augment should be done after cropping
         if self.mode == "train" or self.mode == "val":
             noise_scale = 1.0
             target_coord, target_normal, target_color, target_label, target_pose = self.augment_pcd_instance(
                 target_coord, target_normal, target_color, target_label, target_pose, noise_scale=noise_scale
             )
             anchor_coord, anchor_normal, anchor_color, anchor_label, anchor_pose = self.augment_pcd_instance(
-                anchor_coord, anchor_normal, anchor_color, anchor_label, anchor_pose, disable_rot=True, noise_scale=noise_scale
+                anchor_coord, anchor_normal, anchor_color, anchor_label, anchor_pose, disable_rot=(not self.enable_anchor_rot), noise_scale=noise_scale
             )
         else:
             noise_scale = 1.0
@@ -278,7 +281,7 @@ class PcdPairDataset(Dataset):
 
         # # # # DEBUG: check corr
         # pcd = o3d.geometry.PointCloud()
-        # target_coord_goal = target_coord
+        # # target_coord_goal = target_coord
         # combined_coord = np.concatenate([target_coord_goal, anchor_coord], axis=0)
         # combined_color = np.zeros((combined_coord.shape[0], 3))
         # combined_color[: target_coord_goal.shape[0], 0] = 1
@@ -291,8 +294,8 @@ class PcdPairDataset(Dataset):
         # line_set.lines = o3d.utility.Vector2iVector(lines)
         # line_set.paint_uniform_color([1, 0, 1])
         # # line sphere of corr_radius
-        # sphere = o3d.geometry.TriangleMesh.create_sphere(radius=self.corr_radius, resolution=20)
-        # o3d.visualization.draw_geometries([pcd, line_set, sphere])
+        # # sphere = o3d.geometry.TriangleMesh.create_sphere(radius=self.corr_radius, resolution=20)
+        # o3d.visualization.draw_geometries([pcd, line_set])
         # Return
         return {
             "target_coord": target_coord.astype(np.float32),
@@ -526,7 +529,7 @@ if __name__ == "__main__":
     dataset_name = "data_rdiff"
     split = "test"
     root_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    task_name = "cup_to_holder"  # "can_in_cabinet, book_in_bookshelf, mug_on_rack_multi"
+    task_name = "apple_to_holder"  # "can_in_cabinet, book_in_bookshelf, mug_on_rack_multi"
     cfg_file = os.path.join(root_path, "config", f"pose_transformer_rpdiff_{task_name}.py")
     cfg = LazyConfig.load(cfg_file)
 
@@ -553,7 +556,7 @@ if __name__ == "__main__":
     corr_radius = cfg.DATALOADER.CORR_RADIUS
     use_shape_complete = cfg.DATALOADER.USE_SHAPE_COMPLETE
     complete_strategy = cfg.DATALOADER.COMPLETE_STRATEGY
-
+    enable_anchor_rot = cfg.DATALOADER.AUGMENTATION.ENABLE_ANCHOR_ROT
     # Load dataset & data loader
     if cfg.ENV.GOAL_TYPE == "multimodal":
         dataset_folder = "data_multimodal"
@@ -576,7 +579,7 @@ if __name__ == "__main__":
     print("Data loaded from: ", data_file_dict)
 
     # Override config
-    # crop_pcd = True
+    crop_pcd = True
     # add_normals = True
     volume_augmentations_path = os.path.join(root_path, "config", volume_augmentation_file) if volume_augmentation_file is not None else None
     dataset = PcdPairDataset(
@@ -603,6 +606,7 @@ if __name__ == "__main__":
         corr_radius=corr_radius,
         use_shape_complete=use_shape_complete,
         complete_strategy=complete_strategy,
+        enable_anchor_rot=enable_anchor_rot,
     )
     dataset.set_mode("train")
 
@@ -621,6 +625,7 @@ if __name__ == "__main__":
         anchor_label = data["anchor_label"]
         target_label = data["target_label"]
         is_valid_crop = data["is_valid_crop"]
+        corr = data["corr"]
         print(f"Number of target points: {len(target_coord)}, Number of fixed points: {len(anchor_coord)}, Crop valid: {is_valid_crop}")
 
         target_color = np.zeros_like(target_coord)
@@ -637,10 +642,12 @@ if __name__ == "__main__":
             normal_list=[target_normal, anchor_normal],
             color_list=[target_color, anchor_color],
             pose_list=[np.eye(4, dtype=np.float32), np.eye(4, dtype=np.float32)],
+            corr=corr,
         )
         utils.visualize_pcd_list(
             coordinate_list=[target_coord, anchor_coord],
             normal_list=[target_normal, anchor_normal],
             color_list=[target_color, anchor_color],
             pose_list=[target_pose_mat, np.eye(4, dtype=np.float32)],
+            corr=corr,
         )

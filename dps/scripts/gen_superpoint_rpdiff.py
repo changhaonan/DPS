@@ -26,7 +26,7 @@ if __name__ == "__main__":
     # Parse arguments
     argparser = argparse.ArgumentParser()
     argparser.add_argument("--seed", type=int, default=0)
-    argparser.add_argument("--task_name", type=str, default="cup_to_holder", help="stack_can_in_cabinet, book_in_bookshelf, cup_to_holder")
+    argparser.add_argument("--task_name", type=str, default="thing_to_holder", help="stack_can_in_cabinet, book_in_bookshelf, cup_to_holder")
     args = argparser.parse_args()
 
     # Parse task cfg
@@ -49,6 +49,8 @@ if __name__ == "__main__":
         "book_in_bookshelf": "/home/harvey/Data/rpdiff_V3/book_in_bookshelf",
         "cup_to_holder": "/home/harvey/Data/rpdiff_V3/cup_to_holder",
         "lid_to_cup": "/home/harvey/Data/rpdiff_V3/lid_to_cup",
+        "apple_to_holder": "/home/harvey/Data/rpdiff_V3/apple_to_holder",
+        "thing_to_holder": "/home/harvey/Data/rpdiff_V3/thing_to_holder",
     }
     data_dir = data_path_dict[task_name]
     data_file_list = os.listdir(data_dir)

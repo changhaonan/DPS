@@ -1,5 +1,5 @@
 ENV = dict(
-    TASK_NAME="cup_to_holder",
+    TASK_NAME="apple_to_holder",
     GOAL_TYPE="superpoint",  # rpdiff, superpoint
 )
 PREPROCESS = dict(
@@ -8,7 +8,7 @@ PREPROCESS = dict(
     ANCHOR_RESCALE=1.0,
     NUM_POINT_LOW_BOUND=30,
     NUM_POINT_HIGH_BOUND=400,
-    NEARBY_RADIUS=0.03,
+    NEARBY_RADIUS=0.04,
     USE_SOFT_LABEL=True,
 )
 

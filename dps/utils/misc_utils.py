@@ -19,9 +19,7 @@ def position_encoding(x: torch.Tensor, min_timescale: float = 1.0, max_timescale
     position = torch.arange(length, dtype=torch.float32, device=x.device)
     num_timescales = channels // 2
     log_timescale_increment = np.log(float(max_timescale) / float(min_timescale)) / (float(num_timescales) - 1)
-    inv_timescales = min_timescale * torch.exp(
-        torch.arange(num_timescales, dtype=torch.float32, device=x.device) * -log_timescale_increment
-    )
+    inv_timescales = min_timescale * torch.exp(torch.arange(num_timescales, dtype=torch.float32, device=x.device) * -log_timescale_increment)
     scaled_time = position.unsqueeze(1) * inv_timescales.unsqueeze(0)
     signal = torch.cat([torch.sin(scaled_time), torch.cos(scaled_time)], dim=1)
     signal = signal.unsqueeze(0).repeat(x.shape[:-1] + (1,))
@@ -426,6 +424,7 @@ def visualize_pcd_list(
     color_list: list[np.ndarray] | None = None,
     pose_list: list[np.ndarray] | None = None,
     point_show_normal: bool = False,
+    corr=None,
 ):
     """Visualize a list of point cloud"""
     vis_list = []
@@ -439,6 +438,24 @@ def visualize_pcd_list(
         if pose_list is not None:
             pcd.transform(pose_list[i])
         vis_list.append(pcd)
+    # Add correspondence
+    # if corr is not None:
+    #     assert len(coordinate_list) == 2, "Correspondence visualization only supports 2 point clouds."
+    #     combined_coord = np.concatenate([coord for coord in coordinate_list], axis=0)
+    #     corr = (corr - corr.min()) / (corr.max() - corr.min() + 1e-8)  # Normalize
+    #     lines = []
+    #     colors = []
+    #     for i in range(corr.shape[0]):
+    #         for j in range(corr.shape[1]):
+    #             if corr[i, j] > 0.5:
+    #                 lines.append([i, j + coordinate_list[0].shape[0]])
+    #                 intensity = corr[i, j]
+    #                 colors.append([intensity, 0, 1 - intensity])
+    #     line_set = o3d.geometry.LineSet()
+    #     line_set.points = o3d.utility.Vector3dVector(combined_coord)
+    #     line_set.lines = o3d.utility.Vector2iVector(lines)
+    #     line_set.colors = o3d.utility.Vector3dVector(colors)
+    #     vis_list.append(line_set)
     origin = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1, origin=[0, 0, 0])
     vis_list.append(origin)
     o3d.visualization.draw_geometries(vis_list, point_show_normal=point_show_normal)

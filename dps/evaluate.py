@@ -34,6 +34,9 @@ class DPSEvaluator:
         self.batch_size = min(seg_cfg.DATALOADER.BATCH_SIZE, act_cfg.DATALOADER.BATCH_SIZE)
         self.seg_prob_thresh = seg_cfg.MODEL.SEG_PROB_THRESH
         self.seg_num_thresh = seg_cfg.MODEL.SEG_NUM_THRESH
+        # HACK: use simple policy: directly going to seg center
+        self.use_simple_policy = True
+
         # Build segmentation model
         net_name = seg_cfg.MODEL.NOISE_NET.NAME
         net_init_args = seg_cfg.MODEL.NOISE_NET.INIT_ARGS[net_name]
@@ -125,20 +128,24 @@ class DPSEvaluator:
         batch_anchor_center = batch_anchor_coord.mean(dim=1, keepdim=True)
         anchor_coord = batch_anchor_coord - batch_anchor_center
         act_batch["anchor_coord"] = to_flat_batch(anchor_coord, anchor_mask)[0]
-        for k in range(3):
-            print(f"Iteration {k}...")
-            if k != 0:
-                do_icp = True
-                prev_R = pred_R
-                prev_t = pred_t
-            else:
-                prev_R = np.eye(3)[None, :, :].astype(np.float32).repeat(act_batch_size, axis=0)
-                prev_t = np.zeros((1, 3)).astype(np.float32).repeat(act_batch_size, axis=0)
-                do_icp = False
-            act_batch["prev_R"] = torch.from_numpy(prev_R).to(self.device)
-            act_batch["prev_t"] = torch.from_numpy(prev_t).to(self.device)
-            conf_matrix, gt_corr, (pred_R, pred_t) = self.act_model.predict(batch=act_batch, vis=vis, do_icp=do_icp)
-
+        if not self.use_simple_policy:
+            for k in range(3):
+                print(f"Iteration {k}...")
+                if k != 0:
+                    do_icp = True
+                    prev_R = pred_R
+                    prev_t = pred_t
+                else:
+                    prev_R = np.eye(3)[None, :, :].astype(np.float32).repeat(act_batch_size, axis=0)
+                    prev_t = np.zeros((1, 3)).astype(np.float32).repeat(act_batch_size, axis=0)
+                    do_icp = False
+                act_batch["prev_R"] = torch.from_numpy(prev_R).to(self.device)
+                act_batch["prev_t"] = torch.from_numpy(prev_t).to(self.device)
+                conf_matrix, gt_corr, (pred_R, pred_t) = self.act_model.predict(batch=act_batch, vis=vis, do_icp=do_icp)
+        else:
+            pred_R = np.eye(3)[None, :, :].astype(np.float32).repeat(act_batch_size, axis=0)
+            # Move target to origin
+            pred_t = -np.mean(target_coord, axis=0)[None, :].astype(np.float32).repeat(act_batch_size, axis=0)
         # Recover pose if there exists pose before
         if "anchor_pose" in batch:
             anchor_pose = batch["anchor_pose"][check_batch_idx, ...].detach().cpu().numpy()

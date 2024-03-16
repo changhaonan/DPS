@@ -20,7 +20,7 @@ if __name__ == "__main__":
     argparser = argparse.ArgumentParser()
     argparser.add_argument("--seed", type=int, default=0)
     argparser.add_argument("--random_index", type=int, default=0)
-    argparser.add_argument("--task_name", type=str, default="can_in_cabinet", help="can_in_cabinet, book_in_bookshelf")
+    argparser.add_argument("--task_name", type=str, default="apple_to_holder", help="can_in_cabinet, book_in_bookshelf, cup_to_holder")
     args = argparser.parse_args()
     # Set seed
     torch.manual_seed(args.seed)
@@ -36,6 +36,7 @@ if __name__ == "__main__":
     # Overriding config
     cfg.MODEL.NOISE_NET.NAME = "RGTModel"
     cfg.DATALOADER.AUGMENTATION.CROP_PCD = True
+    # cfg.DATALOADER.AUGMENTATION.CROP_PCD = False
     cfg.DATALOADER.BATCH_SIZE = 8
     # Load dataset & data loader
     train_dataset, val_dataset, test_dataset = build_rpdiff_dataset(root_path, cfg)

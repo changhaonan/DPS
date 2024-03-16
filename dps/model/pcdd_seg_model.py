@@ -65,8 +65,6 @@ class LPcdSegDiffusion(L.LightningModule):
         self.pcd_noise_net.initialize_weights()
 
     def criterion(self, batch):
-        if self.sample_batch is None:
-            self.sample_batch = batch
         # Assemble input
         coord = batch["anchor_coord"]
         normal = batch["anchor_normal"]
@@ -119,6 +117,8 @@ class LPcdSegDiffusion(L.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
+        if (self.current_epoch + 1) % 5 == 0 or self.current_epoch == 0:
+            self.sample_batch = batch  # Reset sample batch
         loss = self.criterion(batch)
         # log
         self.log("val_loss", loss, sync_dist=True, batch_size=self.batch_size)
@@ -162,8 +162,6 @@ class LPcdSegDiffusion(L.LightningModule):
                 # Log image in wandb
                 wandb_logger = self.logger.experiment
                 wandb_logger.log({f"val_label_image": [wandb.Image(concat_image, caption=f"val_label_image_{i}")]})
-        if (self.current_epoch + 1) % 5 == 0:
-            self.sample_batch = None  # Reset sample batch
 
     def forward(self, batch, vis=False):
         """Inference for PCD diffusion model."""
@@ -194,7 +192,6 @@ class LPcdSegDiffusion(L.LightningModule):
             # initialize action from Guassian noise
             noisy_label = torch.randn((batch_coord.shape[0], batch_coord.shape[1], 1), device=self.device)
             for k in self.noise_scheduler.timesteps:
-                print(f"Diffusion step {k.detach().cpu().item()}/{self.num_diffusion_iters}...")
                 timesteps = torch.tensor([k], device=self.device).to(torch.long).repeat(batch_coord.shape[0])
                 noisy_label, _ = to_flat_batch(noisy_label, super_index_mask)
                 # predict noise residual
@@ -253,17 +250,15 @@ class LPcdSegDiffusion(L.LightningModule):
         pcd.points = o3d.utility.Vector3dVector(batch_coord)
         if batch_normal is not None:
             pcd.normals = o3d.utility.Vector3dVector(batch_normal)
-        # CLip label to [-1, 1]
-        # pred_label = np.clip(pred_label, -1, 0.0)
-        # pred_label = (pred_label + 1) / 2.0 - 1.0
-        pred_label[pred_label > 0] = 1
+
+        # pred_label[pred_label > 0] = 1
         # Do jet color using label from [-1, 1]
         color = plt.get_cmap("viridis")(pred_label.squeeze())[:, :3]
         # color = np.clip(color, 0, 1)
         pcd.colors = o3d.utility.Vector3dVector(color)
         # Rotate the object for better view: rotate around y-axis for 90 degree & z-axis for -90 degree
-        rot = R.from_euler("y", 20, degrees=True) * R.from_euler("z", -90, degrees=True) * R.from_euler("y", -70, degrees=True)
-        pcd.rotate(rot.as_matrix(), center=(0, 0, 0))
+        # rot = R.from_euler("y", 20, degrees=True) * R.from_euler("z", -90, degrees=True) * R.from_euler("y", -70, degrees=True)
+        # pcd.rotate(rot.as_matrix(), center=(0, 0, 0))
         if vis_3d:
             o3d.visualization.draw_geometries([pcd])
             return None

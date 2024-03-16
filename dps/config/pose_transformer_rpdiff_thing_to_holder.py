@@ -1,6 +1,7 @@
 ENV = dict(
-    TASK_NAME="cup_to_holder",
+    TASK_NAME="apple_to_holder",
     GOAL_TYPE="superpoint",  # rpdiff, superpoint
+    SEG_TYPE="diffusion",  # diffusion, classification
 )
 PREPROCESS = dict(
     GRID_SIZE=0.01,
@@ -22,7 +23,7 @@ DATALOADER = dict(
     USE_SHAPE_COMPLETE=True,
     COMPLETE_STRATEGY="axis_aligned_bbox",  # bbox, axis_aligned_bbox
     AUGMENTATION=dict(
-        IS_ELASTIC_DISTORTION=False,
+        IS_ELASTIC_DISTORTION=False,  # True for segmentation, False for pose
         ELASTIC_DISTORTION_GRANULARITY=1.0,
         ELASTIC_DISTORTION_MAGNITUDE=1.0,
         IS_RANDOM_DISTORTION=True,
@@ -40,7 +41,7 @@ DATALOADER = dict(
         ROT_AXIS="yz",
         KNN_K=20,
         NORMALIZE_COORD=True,
-        ENABLE_ANCHOR_ROT=True,
+        ENABLE_ANCHOR_ROT=False,
     ),
     SUPER_POINT=[
         "experiment=semantic/scannet.yaml",
@@ -63,7 +64,7 @@ MODEL = dict(
     NUM_DIFFUSION_ITERS=100,
     SEG_PROB_THRESH=-0.5,
     SEG_NUM_THRESH=30,
-    USE_VOXEL_SUPERPOINT=True,
+    USE_VOXEL_SUPERPOINT=False,
     SUPERPOINT_VOXEL_SIZE=0.05,
     NOISE_NET=dict(
         NAME="PCDSEGNOISENET",
@@ -114,6 +115,7 @@ MODEL = dict(
                 num_sam_blocks=2,
                 num_dit_blocks=2,
                 seg_knn=8,
+                out_dim=2 if ENV["SEG_TYPE"] == "classification" else 1,
             ),
         ),
     ),

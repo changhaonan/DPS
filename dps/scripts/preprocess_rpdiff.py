@@ -491,7 +491,7 @@ def build_dataset_superpoint(data_dir, cfg, task_name: str, vis: bool = False, f
 if __name__ == "__main__":
     # Parse arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument("--task_name", type=str, default="cup_to_holder", help="can_in_cabinet, book_in_bookshelf, mug_on_rack_multi")
+    parser.add_argument("--task_name", type=str, default="thing_to_holder", help="can_in_cabinet, book_in_bookshelf, mug_on_rack_multi")
     parser.add_argument("--data_type", type=str, default="superpoint", help="real, rpdiff, superpoint")
     parser.add_argument("--filter_key", type=str, default=None)
     parser.add_argument("--vis", action="store_true")
@@ -501,6 +501,8 @@ if __name__ == "__main__":
         "can_in_cabinet": "/home/harvey/Data/rpdiff_V3/can_in_cabinet",
         "book_in_bookshelf": "/home/harvey/Data/rpdiff_V3/book_in_bookshelf",
         "cup_to_holder": "/home/harvey/Data/rpdiff_V3/cup_to_holder",
+        "apple_to_holder": "/home/harvey/Data/rpdiff_V3/apple_to_holder",
+        "thing_to_holder": "/home/harvey/Data/rpdiff_V3/thing_to_holder",
     }
     task_name = args.task_name
     data_dir = data_path_dict[task_name]
