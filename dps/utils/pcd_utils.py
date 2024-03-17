@@ -7,6 +7,7 @@ import copy
 import torch
 import numpy as np
 import cv2
+import matplotlib.pyplot as plt
 
 
 def check_pcd_pyramid(pcd: o3d.PointCloud, grid_sizes: list[int]):
@@ -154,12 +155,14 @@ def complete_shape(coord: np.ndarray, padding: float = 0.1, strategy: str = "bbo
         dot = np.sum(normals * to_center, axis=-1)
         flip_mask = dot > 0
         normals[flip_mask] *= -1
-
+        # Add center point & normal using z-axis
+        box_points = np.concatenate([box_points, [center]])
+        normals = np.concatenate([normals, [[0, 0, 1]]])
         if vis:
             # transparence
             box_pcd.paint_uniform_color([0.9, 0.1, 0.1])
             o3d.visualization.draw_geometries([pcd, box_pcd])
-        return np.asarray(box_pcd.points), normals
+        return box_points, normals
     elif strategy == "axis_aligned_bbox":
         # Compute axis-aligned bounding box
         pcd = o3d.geometry.PointCloud()
@@ -180,12 +183,14 @@ def complete_shape(coord: np.ndarray, padding: float = 0.1, strategy: str = "bbo
         dot = np.sum(normals * to_center, axis=-1)
         flip_mask = dot > 0
         normals[flip_mask] *= -1
-
+        # Add center point & normal using z-axis
+        box_points = np.concatenate([box_points, [center]])
+        normals = np.concatenate([normals, [[0, 0, 1]]])
         if vis:
             # transparence
             box_pcd.paint_uniform_color([0.9, 0.1, 0.1])
             o3d.visualization.draw_geometries([pcd, box_pcd])
-        return np.asarray(box_pcd.points), normals
+        return box_points, normals
     else:
         raise ValueError(f"Invalid strategy: {strategy}")
 
@@ -355,11 +360,14 @@ def estimate_collision(coord1, coord2):
     return inside_indices.shape[0]
 
 
-def screen_shot_pcd(pcd):
+def screen_shot_pcd(pcd, **kwargs):
     """Take a screenshot of the point cloud."""
+    show_axis = kwargs.get("show_axis", False)
     viewer = o3d.visualization.Visualizer()
     viewer.create_window(width=270, height=270, visible=False)
     viewer.add_geometry(pcd)
+    if show_axis:
+        viewer.add_geometry(o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1))
     # Control visualization
     opt = viewer.get_render_option()
     opt.point_size = 7  # Adjust this value as needed
@@ -369,3 +377,34 @@ def screen_shot_pcd(pcd):
     image = (np.asarray(image) * 255.0).astype(np.uint8)
     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     return image
+
+
+def visualize_corr(coord1, coord2, corr, **kwargs):
+    """Visualize the correspondence between two point clouds.
+    Args:
+    - coord1: The first point cloud.
+    - coord2: The second point cloud.
+    - corr: The correspondence list between the two point clouds.
+    """
+    pcd = o3d.geometry.PointCloud()
+    combined_coord = np.concatenate([coord1, coord2], axis=0)
+    combined_color = np.zeros((combined_coord.shape[0], 3))
+    combined_color[: coord1.shape[0], 0] = 1
+    combined_color[coord1.shape[0] :, 2] = 1
+    pcd.points = o3d.utility.Vector3dVector(combined_coord)
+    pcd.colors = o3d.utility.Vector3dVector(combined_color)
+    lines = np.concatenate([corr[:, 0:1], corr[:, 1:2] + coord1.shape[0]], axis=1)
+    line_set = o3d.geometry.LineSet()
+    line_set.points = o3d.utility.Vector3dVector(combined_coord)
+    line_set.lines = o3d.utility.Vector2iVector(lines)
+    line_set.paint_uniform_color([1, 0, 1])
+    o3d.visualization.draw_geometries([pcd, line_set])
+
+
+def visualize_point_scalar(coord, scalar, **kwargs):
+    """Visualize the point cloud with scalar values."""
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(coord)
+    colors = plt.get_cmap(kwargs.get("cmap", "viridis"))(scalar)[:, :3]
+    pcd.colors = o3d.utility.Vector3dVector(colors)
+    o3d.visualization.draw_geometries([pcd])

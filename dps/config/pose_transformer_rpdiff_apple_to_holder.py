@@ -8,17 +8,17 @@ PREPROCESS = dict(
     ANCHOR_RESCALE=1.0,
     NUM_POINT_LOW_BOUND=30,
     NUM_POINT_HIGH_BOUND=400,
-    NEARBY_RADIUS=0.04,
+    NEARBY_RADIUS=0.03,
     USE_SOFT_LABEL=True,
 )
 
 DATALOADER = dict(
     BATCH_SIZE=4,
     NUM_WORKERS=0,  # Set to 0 if using ilab
-    ADD_NORMALS=True,
+    ADD_NORMALS=False,
     ADD_COLORS=False,
     CORR_RADIUS=0.05,
-    TARGET_PADDING=0.0,  # train with 0.1 or 0.0, infer with 0.2
+    TARGET_PADDING=[0.0, 0.0, 0.3],  # [x, y, z]; train with 0.1 or 0.0, infer with 0.2
     USE_SHAPE_COMPLETE=True,
     COMPLETE_STRATEGY="axis_aligned_bbox",  # bbox, axis_aligned_bbox
     AUGMENTATION=dict(
@@ -40,7 +40,7 @@ DATALOADER = dict(
         ROT_AXIS="yz",
         KNN_K=20,
         NORMALIZE_COORD=True,
-        ENABLE_ANCHOR_ROT=True,
+        ENABLE_ANCHOR_ROT=False,
     ),
     SUPER_POINT=[
         "experiment=semantic/scannet.yaml",
@@ -60,8 +60,8 @@ TRAIN = dict(
 )
 MODEL = dict(
     DIFFUSION_PROCESS="ddpm",
-    NUM_DIFFUSION_ITERS=100,
-    SEG_PROB_THRESH=-0.5,
+    NUM_DIFFUSION_ITERS=20,
+    SEG_PROB_THRESH=0.8,
     SEG_NUM_THRESH=30,
     USE_VOXEL_SUPERPOINT=True,
     SUPERPOINT_VOXEL_SIZE=0.05,
@@ -75,7 +75,7 @@ MODEL = dict(
                 hidden_dims=[128, 256, 256],  # 1+ dim are the same
                 n_heads=[8, 16, 16],
                 ks=[16, 24, 32],
-                in_dim=10,
+                in_dim=4,
                 fusion_projection_dim=512,
             ),
             RGTModel=dict(
@@ -85,8 +85,9 @@ MODEL = dict(
                 hidden_dims=[128, 256, 256],  # 1+ dim are the same
                 n_heads=[8, 16, 16],
                 ks=[16, 24, 32],
-                in_dim=10,
+                in_dim=4,
                 fusion_projection_dim=512,
+                num_denoise_layers=3,
             ),
             PCDSEGNOISENET=dict(
                 condition_strategy="FiLM",  # FiLM, cross_attn, concat
@@ -97,7 +98,7 @@ MODEL = dict(
                 hidden_dims=[128, 256, 256],
                 n_heads=[8, 16, 16],
                 ks=[8, 8, 16],
-                in_dim=10,
+                in_dim=4,
                 hidden_dim_denoise=256,
                 n_heads_denoise=8,
                 num_denoise_layers=3,
@@ -106,14 +107,13 @@ MODEL = dict(
                 grid_sizes=[0.1, 0.2],
                 depths=[2, 3, 3],
                 dec_depths=[1, 1],
-                hidden_dims=[128, 256, 256],  # 1+ dim are the same
+                hidden_dims=[128, 256, 256],
                 n_heads=[8, 16, 16],
                 ks=[8, 8, 16],
-                in_dim=10,
+                in_dim=4,
                 hidden_dim_denoise=256,
-                num_sam_blocks=2,
-                num_dit_blocks=2,
-                seg_knn=8,
+                n_heads_denoise=8,
+                num_denoise_layers=2,
             ),
         ),
     ),

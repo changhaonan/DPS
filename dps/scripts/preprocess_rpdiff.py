@@ -8,7 +8,7 @@ import numpy as np
 import h5py
 import open3d as o3d
 import dps.utils.misc_utils as utils
-import torch
+from dps.utils.pcd_utils import complete_shape
 import pickle
 from tqdm import tqdm
 import copy
@@ -386,37 +386,18 @@ def build_dataset_superpoint(data_dir, cfg, task_name: str, vis: bool = False, f
             target_feat.append(c_superpoint_data[f_key])
         target_feat = np.concatenate(target_feat, axis=-1)
         target_super_index = np.vstack(c_superpoint_data["super_index"]).T
-        # Voxel Downsample
-        # # FIXME: Downsample method still need to improve as super_index is also averaged
-        # grid_size = cfg.PREPROCESS.GRID_SIZE
-        # anchor_pcd = o3d.t.geometry.PointCloud()
-        # anchor_pcd.point["positions"] = o3d.core.Tensor(anchor_coord, dtype=o3d.core.Dtype.Float32)
-        # anchor_pcd.point["normals"] = o3d.core.Tensor(anchor_normal, dtype=o3d.core.Dtype.Float32)
-        # anchor_pcd.point["features"] = o3d.core.Tensor(anchor_feat, dtype=o3d.core.Dtype.Float32)
-        # anchor_pcd.point["super_index"] = o3d.core.Tensor(anchor_super_index, dtype=o3d.core.Dtype.Int32)
-        # anchor_pcd = anchor_pcd.voxel_down_sample(voxel_size=grid_size)
-        # anchor_coord = anchor_pcd.point["positions"].numpy()
-        # anchor_normal = anchor_pcd.point["normals"].numpy()
-        # anchor_feat = anchor_pcd.point["features"].numpy()
-        # anchor_super_index = anchor_pcd.point["super_index"].numpy().astype(np.int64)
-
-        # target_pcd = o3d.t.geometry.PointCloud()
-        # target_pcd.point["positions"] = o3d.core.Tensor(target_coord, dtype=o3d.core.Dtype.Float32)
-        # target_pcd.point["normals"] = o3d.core.Tensor(target_normal, dtype=o3d.core.Dtype.Float32)
-        # target_pcd.point["features"] = o3d.core.Tensor(target_feat, dtype=o3d.core.Dtype.Float32)
-        # target_pcd.point["super_index"] = o3d.core.Tensor(target_super_index, dtype=o3d.core.Dtype.Int32)
-        # target_pcd = target_pcd.voxel_down_sample(voxel_size=grid_size)
-        # target_coord = target_pcd.point["positions"].numpy()
-        # target_normal = target_pcd.point["normals"].numpy()
-        # target_feat = target_pcd.point["features"].numpy()
-        # target_super_index = target_pcd.point["super_index"].numpy().astype(np.int64)
 
         # Compute nearby label
         target_label = -np.ones((target_coord.shape[0],), dtype=np.float32)  # -1: not nearby, 1: nearby
         nearyby_radius = cfg.PREPROCESS.NEARBY_RADIUS
         use_soft_label = cfg.PREPROCESS.USE_SOFT_LABEL
         num_point_lower_bound = cfg.PREPROCESS.NUM_POINT_LOW_BOUND
-        anchor_nearby_indices, anchor_nearby_distances = compute_nearby_pcd(anchor_coord, target_coord, radius=nearyby_radius)
+        # Compelete shape
+        complete_strategy = cfg.DATALOADER.COMPLETE_STRATEGY
+        target_padding = cfg.DATALOADER.TARGET_PADDING
+
+        complete_target_coord, _ = complete_shape(target_coord, padding=np.array(target_padding), strategy=complete_strategy)
+        anchor_nearby_indices, anchor_nearby_distances = compute_nearby_pcd(anchor_coord, complete_target_coord, radius=nearyby_radius)
         anchor_label = -np.ones((anchor_coord.shape[0],), dtype=np.float32)  # -1: not nearby, 1: nearby
         if len(anchor_nearby_indices) <= num_point_lower_bound or target_coord.shape[0] <= num_point_lower_bound:
             print(f"Target pcd has {target_coord.shape[0]} points, fixed pcd has {anchor_coord.shape[0]} points, anchor_nearby_indices has {len(anchor_nearby_indices)} points.")
@@ -428,8 +409,9 @@ def build_dataset_superpoint(data_dir, cfg, task_name: str, vis: bool = False, f
             anchor_label[anchor_nearby_indices] = 2.0 * np.exp(-np.array(anchor_nearby_distances) / nearyby_radius) - 1.0
         if vis:
             target_pcd = o3d.geometry.PointCloud()
-            target_pcd.points = o3d.utility.Vector3dVector(target_coord)
-            target_pcd.normals = o3d.utility.Vector3dVector(target_normal)
+            target_pcd.points = o3d.utility.Vector3dVector(complete_target_coord)
+            # target_pcd.normals = o3d.utility.Vector3dVector(target_normal)
+            target_pcd.paint_uniform_color([0, 0, 1])
             target_bbox = target_pcd.get_axis_aligned_bounding_box()
             target_bbox.color = (1, 1, 0)
             anchor_pcd = o3d.geometry.PointCloud()
@@ -440,7 +422,8 @@ def build_dataset_superpoint(data_dir, cfg, task_name: str, vis: bool = False, f
             anchor_color[anchor_nearby_indices, :] = [1, 0, 0]
             anchor_pcd.normals = o3d.utility.Vector3dVector(anchor_normal)
             anchor_pcd.colors = o3d.utility.Vector3dVector(anchor_color)
-            o3d.visualization.draw_geometries([anchor_pcd, target_pcd, target_bbox])
+            origin = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1, origin=[0, 0, 0])
+            o3d.visualization.draw_geometries([anchor_pcd, target_pcd, target_bbox, origin])
             # # Visualize by superpoint average
             # superpoint_layer0 = anchor_super_index[:, 0]
             # num_superpoint = np.max(superpoint_layer0) + 1
@@ -491,9 +474,9 @@ def build_dataset_superpoint(data_dir, cfg, task_name: str, vis: bool = False, f
 if __name__ == "__main__":
     # Parse arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument("--task_name", type=str, default="thing_to_holder", help="can_in_cabinet, book_in_bookshelf, mug_on_rack_multi")
+    parser.add_argument("--task_name", type=str, default="apple_to_holder", help="can_in_cabinet, book_in_bookshelf, mug_on_rack_multi")
     parser.add_argument("--data_type", type=str, default="superpoint", help="real, rpdiff, superpoint")
-    parser.add_argument("--filter_key", type=str, default=None)
+    parser.add_argument("--filter_key", type=str, default=["verticality"], help="Filter key")
     parser.add_argument("--vis", action="store_true")
     args = parser.parse_args()
     # Prepare path
@@ -522,6 +505,6 @@ if __name__ == "__main__":
     elif args.data_type == "rpdiff":
         build_dataset_rpdiff(data_dir, cfg, task_name=task_name, vis=vis, do_scaling=do_scaling)
     elif args.data_type == "superpoint":
-        build_dataset_superpoint(data_dir, cfg, task_name=task_name, vis=vis)
+        build_dataset_superpoint(data_dir, cfg, task_name=task_name, vis=vis, f_keys=filter_key)
     else:
         raise NotImplementedError

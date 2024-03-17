@@ -26,7 +26,7 @@ if __name__ == "__main__":
     # Parse arguments
     argparser = argparse.ArgumentParser()
     argparser.add_argument("--seed", type=int, default=0)
-    argparser.add_argument("--task_name", type=str, default="thing_to_holder", help="stack_can_in_cabinet, book_in_bookshelf, cup_to_holder")
+    argparser.add_argument("--task_name", type=str, default="apple_to_holder", help="stack_can_in_cabinet, book_in_bookshelf, cup_to_holder")
     args = argparser.parse_args()
 
     # Parse task cfg
@@ -83,11 +83,11 @@ if __name__ == "__main__":
                 raise ValueError("Outliers detected in the point cloud")
 
             ## Visualize
-            # child_pcd_o3d = o3d.geometry.PointCloud()
-            # child_pcd_o3d.points = o3d.utility.Vector3dVector(child_pcd_s)
-            # parent_pcd_o3d = o3d.geometry.PointCloud()
-            # parent_pcd_o3d.points = o3d.utility.Vector3dVector(parent_pcd_s)
-            # o3d.visualization.draw_geometries([parent_pcd_o3d, child_pcd_o3d])
+            child_pcd_o3d = o3d.geometry.PointCloud()
+            child_pcd_o3d.points = o3d.utility.Vector3dVector(child_pcd_s)
+            parent_pcd_o3d = o3d.geometry.PointCloud()
+            parent_pcd_o3d.points = o3d.utility.Vector3dVector(parent_pcd_s)
+            origin = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1, origin=[0, 0, 0])
 
             # Process parent_pcd_s
             p_points = np.array(parent_pcd_s)

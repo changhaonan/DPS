@@ -41,6 +41,7 @@ DATALOADER = dict(
         ROT_AXIS="yz",
         KNN_K=20,
         NORMALIZE_COORD=True,
+        ENABLE_ANCHOR_ROT=False,
     ),
     SUPER_POINT=[
         "experiment=semantic/scannet.yaml",

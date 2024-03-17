@@ -57,12 +57,13 @@ if __name__ == "__main__":
         "book_in_bookshelf": "/home/harvey/Data/rpdiff_V3/book_in_bookshelf",
         "cup_to_holder": "/home/harvey/Data/rpdiff_V3/cup_to_holder",
         "lid_to_cup": "/home/harvey/Data/rpdiff_V3/lid_to_cup",
+        "apple_to_holder": "/home/harvey/Data/rpdiff_V3/apple_to_holder",
         "anet3d": "/home/harvey/Data/Anet3D",
     }
 
-    task_name = "cup_to_holder"  # "book_in_bookshelf", "can_in_cabinet" "anet3d"
+    task_name = "apple_to_holder"  # "book_in_bookshelf", "can_in_cabinet" "anet3d"
     data_dir = data_path_dict[task_name]
-    if task_name in ["can_in_cabinet", "book_in_bookshelf", "cup_to_holder"]:
+    if task_name is not "anet3d":
         visualize_rpdiff(data_dir)
     elif task_name == "anet3d":
         visualize_anet3d(data_dir)

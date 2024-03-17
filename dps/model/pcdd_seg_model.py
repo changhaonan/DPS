@@ -67,7 +67,7 @@ class LPcdSegDiffusion(L.LightningModule):
     def criterion(self, batch):
         # Assemble input
         coord = batch["anchor_coord"]
-        normal = batch["anchor_normal"]
+        normal = batch.get("anchor_normal", None)
         feat = batch["anchor_feat"]
         label = batch["anchor_label"]
         batch_idx = batch["anchor_batch_index"]
@@ -117,7 +117,7 @@ class LPcdSegDiffusion(L.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        if (self.current_epoch + 1) % 5 == 0 or self.current_epoch == 0:
+        if (self.current_epoch + 1) % 10 == 0 or self.current_epoch == 0:
             self.sample_batch = batch  # Reset sample batch
         loss = self.criterion(batch)
         # log
@@ -167,7 +167,7 @@ class LPcdSegDiffusion(L.LightningModule):
         """Inference for PCD diffusion model."""
         # Assemble input
         coord = batch["anchor_coord"]
-        normal = batch["anchor_normal"]
+        normal = batch.get("anchor_normal", None)
         feat = batch["anchor_feat"]
         batch_idx = batch["anchor_batch_index"]
         offset = batch2offset(batch_idx)
@@ -199,18 +199,23 @@ class LPcdSegDiffusion(L.LightningModule):
                 noisy_label, _ = to_dense_batch(noisy_label, super_batch_index)
                 # inverse diffusion step (remove noise)
                 noisy_label = self.noise_scheduler.step(model_output=noise_pred, timestep=k, sample=noisy_label).prev_sample
+                # if k <= 10:
+                #     # Apply guidance
+                #     guidance = self.compute_guidance_gradient(batch_coord, noisy_label)
+                #     scale = 0.2
+                #     noisy_label = (1 - scale) * noisy_label + guidance * scale
                 # Visualize diffusion process
                 if vis and (k.detach().cpu().item() % 10 == 0 or k.detach().cpu().item() == self.num_diffusion_iters - 1 or k.detach().cpu().item() == 1):
                     # Convert to full point cloud
                     full_anchor_coord = to_dense_batch(coord, batch_idx)[0]
-                    full_anchor_normal = to_dense_batch(normal, batch_idx)[0]
+                    full_anchor_normal = to_dense_batch(normal, batch_idx)[0] if normal is not None else None
                     full_anchor_label = to_flat_batch(noisy_label, super_index_mask)[0]
                     full_anchor_label = full_anchor_label[super_index]
                     full_anchor_label = to_dense_batch(full_anchor_label, batch_idx)[0]
                     for i in range(batch_coord.shape[0]):
                         pred_label_i = full_anchor_label[i]
                         anchor_coord_i = full_anchor_coord[i]
-                        anchor_normal_i = full_anchor_normal[i]
+                        anchor_normal_i = full_anchor_normal[i] if full_anchor_normal is not None else None
                         image = self.view_result(anchor_coord_i, pred_label_i, anchor_normal_i, vis_3d=False)
                         # Save image
                         # cv2.imshow("diffusion", image)
@@ -293,6 +298,27 @@ class LPcdSegDiffusion(L.LightningModule):
 
         return cluster.detach()
 
+    def compute_guidance_gradient(self, batch_coord, batch_label, **kwargs):
+        """Compute guidance to guide label groupping. We are trying to guide the label to group into 3d clusters."""
+        cluster_radius = kwargs.get("cluster_radius", 0.05)
+        # Compute center for batch_label > 0
+        batch_size = batch_label.shape[0]
+        batch_center = []
+        for i in range(batch_size):
+            label_i = batch_label[i]
+            coord_i = batch_coord[i]
+            center_i = torch.mean(coord_i[label_i.squeeze() > 0], dim=0)
+            batch_center.append(center_i)
+        batch_center = torch.stack(batch_center, dim=0)[:, None, :].repeat(1, batch_coord.shape[1], 1)
+        # Mark coord whose distance to center is less than cluster_radius as 1
+        dist = torch.norm(batch_coord - batch_center, dim=2)
+        mask = dist < cluster_radius
+        # Compute gradient
+        grad = torch.zeros_like(batch_label)
+        grad[mask] = 1
+        grad[~mask] = -1
+        return grad
+
 
 class PCDDModel:
     """PCD diffusion model"""
@@ -301,6 +327,7 @@ class PCDDModel:
         self.cfg = cfg
         # parameters
         self.logger_project = cfg.LOGGER.PROJECT
+        self.gradient_clip_val = cfg.TRAIN.GRADIENT_CLIP_VAL
         # build model
         self.pcd_noise_net = pcd_noise_net
         if pcd_noise_net is not None:
@@ -321,6 +348,7 @@ class PCDDModel:
             strategy=strategy,
             log_every_n_steps=5,
             accelerator=accelerator,
+            gradient_clip_val=self.gradient_clip_val,
         )
         trainer.fit(self.lpcd_noise_net, train_dataloaders=train_data_loader, val_dataloaders=val_data_loader)
 
@@ -370,14 +398,14 @@ class PCDDModel:
             check_batch_idx = kwargs.get("check_batch_idx", 0)
             batch_size = kwargs.get("batch_size", 8)
             anchor_coord = batch["anchor_coord"]
-            anchor_normal = batch["anchor_normal"]
+            anchor_normal = batch.get("anchor_normal", None)
             anchor_feat = batch["anchor_feat"]
             anchor_batch_index = batch["anchor_batch_index"]
             anchor_super_index_i = batch["anchor_super_index"][anchor_batch_index == check_batch_idx]
             anchor_super_index_i[:, 0] = anchor_super_index_i[:, 0] - torch.min(anchor_super_index_i[:, 0])
-            anchor_super_index_i[:, 1] = anchor_super_index_i[:, 1] - torch.min(anchor_super_index_i[:, 1])
+            # anchor_super_index_i[:, 1] = anchor_super_index_i[:, 1] - torch.min(anchor_super_index_i[:, 1])
             anchor_coord_i = anchor_coord[anchor_batch_index == check_batch_idx]
-            anchor_normal_i = anchor_normal[anchor_batch_index == check_batch_idx]
+            anchor_normal_i = anchor_normal[anchor_batch_index == check_batch_idx] if anchor_normal is not None else None
             anchor_feat_i = anchor_feat[anchor_batch_index == check_batch_idx]
             anchor_coord_list = []
             anchor_normal_list = []
@@ -387,18 +415,20 @@ class PCDDModel:
             num_anchor_cluster = 0
             for i in range(batch_size):
                 anchor_coord_list.append(anchor_coord_i)
-                anchor_normal_list.append(anchor_normal_i)
+                if anchor_normal_i is not None:
+                    anchor_normal_list.append(anchor_normal_i)
                 anchor_super_index_list.append(anchor_super_index_i + num_anchor_cluster)
                 anchor_feat_list.append(anchor_feat_i)
                 anchor_batch_idx_list.append(torch.tensor([i] * anchor_coord_i.shape[0], dtype=torch.int64))
                 num_anchor_cluster = num_anchor_cluster + torch.max(anchor_super_index_i) + 1
             batch = {
                 "anchor_coord": torch.cat(anchor_coord_list, dim=0),
-                "anchor_normal": torch.cat(anchor_normal_list, dim=0),
                 "anchor_super_index": torch.cat(anchor_super_index_list, dim=0),
                 "anchor_feat": torch.cat(anchor_feat_list, dim=0),
                 "anchor_batch_index": torch.cat(anchor_batch_idx_list, dim=0),
             }
+            if len(anchor_normal_list) > 0:
+                batch["anchor_normal"] = torch.cat(anchor_normal_list, dim=0)
         # Put to device
         for key in batch.keys():
             batch[key] = batch[key].to(self.lpcd_noise_net.device)
@@ -409,10 +439,13 @@ class PCDDModel:
 
         anchor_coord = batch["anchor_coord"]
         anchor_batch_coord = to_dense_batch(anchor_coord, batch_idx)[0]
-        anchor_normal = batch["anchor_normal"]
-        anchor_batch_normal = to_dense_batch(anchor_normal, batch_idx)[0]
+        if "anchor_normal" in batch:
+            anchor_normal = batch["anchor_normal"]
+            anchor_batch_normal = to_dense_batch(anchor_normal, batch_idx)[0].detach().cpu().numpy()
+        else:
+            anchor_batch_normal = None
         anchor_feat = batch["anchor_feat"]
-        anchor_batch_feat = to_dense_batch(anchor_feat, batch_idx)[0]
+        anchor_batch_feat = to_dense_batch(anchor_feat, batch_idx)[0].detach().cpu().numpy()
         if vis:
             for i in range(min(pred_label.shape[0], 16)):
                 pred_label_i = pred_label[i]
@@ -420,7 +453,7 @@ class PCDDModel:
                 pred_label_i = pred_label[i]
                 self.lpcd_noise_net.view_result(anchord_coord_i, pred_label_i, vis_3d=True)
 
-        return pred_label.detach().cpu().numpy(), anchor_batch_coord.detach().cpu().numpy(), anchor_batch_normal.detach().cpu().numpy(), anchor_batch_feat.detach().cpu().numpy()
+        return pred_label.detach().cpu().numpy(), anchor_batch_coord.detach().cpu().numpy(), anchor_batch_normal, anchor_batch_feat
 
     def load(self, checkpoint_path: str) -> None:
         print(f"Loading checkpoint from {checkpoint_path}")
@@ -461,9 +494,10 @@ class PCDDModel:
                 coord_i_crop_bbox = coord_i[crop_index]
                 seg_list.append({"coord": coord_i_crop_bbox, "prob": avg_prob})
                 for k, v in kwargs.items():
-                    v_i = v[i]
-                    v_i_crop = v_i[crop_index]
-                    seg_list[-1][k] = v_i_crop
+                    if v is not None:
+                        v_i = v[i]
+                        v_i_crop = v_i[crop_index]
+                        seg_list[-1][k] = v_i_crop
 
         sort_strategy = kwargs.get("sort_strategy", "num_points")
         if sort_strategy == "num_points":

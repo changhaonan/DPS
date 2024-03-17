@@ -301,6 +301,29 @@ def mat_to_pose9d(mat, rot_axis="xy"):
     return pose9d
 
 
+def pose7d_to_mat(pose7d):
+    """
+    Args:
+        pose7d: (7,)
+    """
+    quat = pose7d[3:]
+    if np.linalg.norm(quat) < 1e-8:
+        quat = np.array([1.0, 0.0, 0.0, 0.0])
+    quat = quat / np.linalg.norm(quat)
+    mat = np.eye(4)
+    mat[:3, :3] = R.from_quat(quat).as_matrix()
+    mat[:3, 3] = pose7d[:3]
+    return mat
+
+
+def mat_to_pose7d(mat):
+    quat = R.from_matrix(mat[:3, :3]).as_quat()
+    pose7d = np.zeros(7)
+    pose7d[:3] = mat[:3, 3]
+    pose7d[3:] = quat
+    return pose7d
+
+
 # -----------------------------------------------------------------------------
 # 3D Utils
 # -----------------------------------------------------------------------------

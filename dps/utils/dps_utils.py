@@ -27,6 +27,7 @@ def build_rpdiff_dataset(root_path, cfg):
     corr_radius = cfg.DATALOADER.CORR_RADIUS
     use_shape_complete = cfg.DATALOADER.USE_SHAPE_COMPLETE
     complete_strategy = cfg.DATALOADER.COMPLETE_STRATEGY
+    enable_anchor_rot = cfg.DATALOADER.AUGMENTATION.ENABLE_ANCHOR_ROT
     # Load dataset & data loader
     if "real" in cfg.ENV.GOAL_TYPE:
         dataset_folder = "data_real"
@@ -74,6 +75,7 @@ def build_rpdiff_dataset(root_path, cfg):
         corr_radius=corr_radius,
         use_shape_complete=use_shape_complete,
         complete_strategy=complete_strategy,
+        enable_anchor_rot=enable_anchor_rot,
     )
     val_dataset = PcdPairDataset(
         data_file_list=[data_file_dict["val"]],
@@ -99,6 +101,7 @@ def build_rpdiff_dataset(root_path, cfg):
         corr_radius=corr_radius,
         use_shape_complete=use_shape_complete,
         complete_strategy=complete_strategy,
+        enable_anchor_rot=enable_anchor_rot,
     )
     test_dataset = PcdPairDataset(
         data_file_list=[data_file_dict["test"]],
@@ -124,5 +127,6 @@ def build_rpdiff_dataset(root_path, cfg):
         corr_radius=corr_radius,
         use_shape_complete=use_shape_complete,
         complete_strategy=complete_strategy,
+        enable_anchor_rot=enable_anchor_rot,
     )
     return train_dataset, val_dataset, test_dataset

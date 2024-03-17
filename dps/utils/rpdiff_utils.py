@@ -22,16 +22,21 @@ def read_rpdiff_data(data_file=None, target_coord=None, anchor_coord=None, targe
         raw_data = np.load(data_file, allow_pickle=True)
         if "multi_obj_start_pcd" in raw_data:
             parent_pcd_s, child_pcd_s = parse_child_parent(raw_data["multi_obj_start_pcd"])
+            parent_pcd_f, child_pcd_f = parse_child_parent(raw_data["multi_obj_final_pcd"])
             parent_normal_s, child_normal_s = parse_child_parent(raw_data["normals"])
             parent_color_s, child_color_s = parse_child_parent(raw_data["colors"])
             data = {
-                "target_coord": child_pcd_s,
+                "target_coord": child_pcd_f,
                 "target_normal": child_normal_s,
                 "target_color": child_color_s,
                 "anchor_coord": parent_pcd_s,
                 "anchor_normal": parent_normal_s,
                 "anchor_color": parent_color_s,
             }
+        if "noise_free_start_pcd" in raw_data:
+            parent_pcd_s, child_pcd_s = parse_child_parent(raw_data["noise_free_start_pcd"])
+            data["target_coord_nf"] = child_pcd_s
+            data["anchor_coord_nf"] = parent_pcd_s
         elif "parent_pcd" in raw_data:
             data = {
                 "target_coord": raw_data["child_pcd"],
@@ -51,28 +56,36 @@ def read_rpdiff_data(data_file=None, target_coord=None, anchor_coord=None, targe
         # Check data
         target_pcd_o3d = o3d.geometry.PointCloud()
         target_pcd_o3d.points = o3d.utility.Vector3dVector(data["target_coord"])
-        target_pcd_o3d.normals = o3d.utility.Vector3dVector(data["target_normal"])
-        target_pcd_o3d.paint_uniform_color([0, 0, 1])
+        # Compute normal
+        target_pcd_o3d.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
+        # target_pcd_o3d.normals = o3d.utility.Vector3dVector(data["target_normal"])
+        target_pcd_o3d.paint_uniform_color([171.0 / 255.0, 219.0 / 255.0, 227.0 / 255.0])
         anchor_pcd_o3d = o3d.geometry.PointCloud()
         anchor_pcd_o3d.points = o3d.utility.Vector3dVector(data["anchor_coord"])
         anchor_pcd_o3d.normals = o3d.utility.Vector3dVector(data["anchor_normal"])
-        anchor_pcd_o3d.paint_uniform_color([1, 0, 0])
+        anchor_pcd_o3d.paint_uniform_color([234.0 / 255.0, 182.0 / 255.0, 118.0 / 255.0])
         o3d.visualization.draw_geometries([target_pcd_o3d, anchor_pcd_o3d])
     return data
 
 
-def reorient_pcd(target_coord, anchor_coord, target_normal=None, anchor_normal=None, **kwargs):
+def reorient_pcd(target_coord, anchor_coord, target_normal=None, anchor_normal=None, target_color=None, anchor_color=None, **kwargs):
     """Reorient the object"""
     table_center = kwargs.get("table_center", [0, 0, 0])
     # Build o3d object
     target_pcd_o3d = o3d.geometry.PointCloud()
     target_pcd_o3d.points = o3d.utility.Vector3dVector(target_coord)
     target_pcd_o3d.normals = o3d.utility.Vector3dVector(target_normal)
-    target_pcd_o3d.paint_uniform_color([0, 0, 1])
+    if target_color is not None:
+        target_pcd_o3d.colors = o3d.utility.Vector3dVector(target_color)
+    else:
+        target_pcd_o3d.paint_uniform_color([0, 0, 1])
     anchor_pcd_o3d = o3d.geometry.PointCloud()
     anchor_pcd_o3d.points = o3d.utility.Vector3dVector(anchor_coord)
     anchor_pcd_o3d.normals = o3d.utility.Vector3dVector(anchor_normal)
-    anchor_pcd_o3d.paint_uniform_color([1, 0, 0])
+    if anchor_color is not None:
+        anchor_pcd_o3d.colors = o3d.utility.Vector3dVector(anchor_color)
+    else:
+        anchor_pcd_o3d.paint_uniform_color([1, 0, 0])
 
     # Estimate the pose of fixed coord using a rotating bbox
     anchor_pcd_bbox = anchor_pcd_o3d.get_minimal_oriented_bounding_box()
@@ -119,7 +132,6 @@ def reorient_pcd(target_coord, anchor_coord, target_normal=None, anchor_normal=N
     target_normal = np.array(target_pcd_o3d.normals).astype(np.float32)
     anchor_coord = np.array(anchor_pcd_o3d.points).astype(np.float32)
     anchor_normal = np.array(anchor_pcd_o3d.normals).astype(np.float32)
-
     data = {
         "target_coord": target_coord,
         "anchor_coord": anchor_coord,
@@ -128,6 +140,12 @@ def reorient_pcd(target_coord, anchor_coord, target_normal=None, anchor_normal=N
         "anchor_pose": anchor_pose,
         "target_pose": target_pose,
     }
+    if target_color is not None:
+        target_color = np.array(target_pcd_o3d.colors).astype(np.float32)
+        data["target_color"] = target_color
+    if anchor_color is not None:
+        anchor_color = np.array(anchor_pcd_o3d.colors).astype(np.float32)
+        data["anchor_color"] = anchor_color
     return data
 
 
@@ -181,7 +199,7 @@ class RpdiffHelper:
 
     def process_data(self, target_coord, anchor_coord, target_normal, anchor_normal, **kwargs):
         """Convert raw data into format for evaluation"""
-        f_keys = ["planarity", "linearity", "verticality", "scattering"]
+        f_keys = kwargs.get("f_keys", ["planarity", "linearity", "verticality", "scattering"])
         # First do reorientation; reorientation can make the training more efficient
         reorient_data = reorient_pcd(target_coord, anchor_coord, target_normal, anchor_normal, **kwargs)
         # Downsample the point cloud

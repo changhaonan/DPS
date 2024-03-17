@@ -48,7 +48,7 @@ class PcdPairCollator:
             # Update num_cluster
             num_anchor_cluster = num_anchor_cluster + np.max(item["anchor_super_index"]) + 1
             num_target_cluster = num_target_cluster + np.max(item["target_super_index"]) + 1
-        return {k: torch.from_numpy(np.concatenate(v)) for k, v in target.items()}
+        return {k: torch.from_numpy(np.concatenate(v)) for k, v in target.items() if len(v) > 0}
 
 
 if __name__ == "__main__":

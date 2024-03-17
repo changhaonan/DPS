@@ -279,23 +279,10 @@ class PcdPairDataset(Dataset):
         target_coord_goal = (target_pose_mat[:3, :3] @ target_coord.T).T + target_pose_mat[:3, 3]
         corr = pcd_utils.compute_corr_radius(target_coord_goal, anchor_coord, radius=self.corr_radius)
 
-        # # # # DEBUG: check corr
-        # pcd = o3d.geometry.PointCloud()
-        # # target_coord_goal = target_coord
-        # combined_coord = np.concatenate([target_coord_goal, anchor_coord], axis=0)
-        # combined_color = np.zeros((combined_coord.shape[0], 3))
-        # combined_color[: target_coord_goal.shape[0], 0] = 1
-        # combined_color[target_coord_goal.shape[0] :, 2] = 1
-        # pcd.points = o3d.utility.Vector3dVector(combined_coord)
-        # pcd.colors = o3d.utility.Vector3dVector(combined_color)
-        # lines = np.concatenate([corr[:, 0:1], corr[:, 1:2] + target_coord_goal.shape[0]], axis=1)
-        # line_set = o3d.geometry.LineSet()
-        # line_set.points = o3d.utility.Vector3dVector(combined_coord)
-        # line_set.lines = o3d.utility.Vector2iVector(lines)
-        # line_set.paint_uniform_color([1, 0, 1])
-        # # line sphere of corr_radius
-        # # sphere = o3d.geometry.TriangleMesh.create_sphere(radius=self.corr_radius, resolution=20)
-        # o3d.visualization.draw_geometries([pcd, line_set])
+        ## DEBUG: check corr
+        # pcd_utils.visualize_corr(target_coord_goal, anchor_coord, corr, radius=self.corr_radius)
+        ## DEBUG: check feat
+        # pcd_utils.visualize_point_scalar(anchor_coord, anchor_label)
         # Return
         return {
             "target_coord": target_coord.astype(np.float32),
@@ -579,7 +566,7 @@ if __name__ == "__main__":
     print("Data loaded from: ", data_file_dict)
 
     # Override config
-    crop_pcd = True
+    crop_pcd = False
     # add_normals = True
     volume_augmentations_path = os.path.join(root_path, "config", volume_augmentation_file) if volume_augmentation_file is not None else None
     dataset = PcdPairDataset(
@@ -639,14 +626,14 @@ if __name__ == "__main__":
 
         utils.visualize_pcd_list(
             coordinate_list=[target_coord, anchor_coord],
-            normal_list=[target_normal, anchor_normal],
+            # normal_list=[target_normal, anchor_normal],
             color_list=[target_color, anchor_color],
             pose_list=[np.eye(4, dtype=np.float32), np.eye(4, dtype=np.float32)],
             corr=corr,
         )
         utils.visualize_pcd_list(
             coordinate_list=[target_coord, anchor_coord],
-            normal_list=[target_normal, anchor_normal],
+            # normal_list=[target_normal, anchor_normal],
             color_list=[target_color, anchor_color],
             pose_list=[target_pose_mat, np.eye(4, dtype=np.float32)],
             corr=corr,

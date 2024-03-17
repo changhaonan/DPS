@@ -229,24 +229,25 @@ class PcdSegNoiseNet(nn.Module):
         Args:
             points (list[torch.Tensor]): coord, point, offset
         """
-        # Assemble feat
-        feat_list = [points[0], points[1]]
-        if "normal" in attrs:
-            normal = attrs["normal"]
-            feat_list.append(normal)
-        points = [points[0], torch.cat(feat_list, dim=1), points[2]]
-
         if self.normalize_coord:
             # Normalize the coord to unit cube
             coord, feat, offset = points
             # Convert to batch & mask
             batch_index = offset2batch(offset)
             coord, mask = to_dense_batch(coord, batch_index)
-            normal = to_dense_batch(normal, batch_index) if "normal" in attrs else None
             # Normalize the coord
             center = coord.mean(dim=1, keepdim=True)
+            # scale = (coord - center).abs().max(dim=1, keepdim=True).values
+            # coord = (coord - center) / scale
             coord = coord - center
             points[0] = to_flat_batch(coord, mask)[0]
+
+        # Assemble feat after normalization
+        feat_list = [points[0], points[1]]
+        if "normal" in attrs and attrs["normal"] is not None:
+            normal = attrs["normal"]
+            feat_list.append(normal)
+        points = [points[0], torch.cat(feat_list, dim=1), points[2]]
 
         points, all_points, cluster_indices, attrs = self.pcd_encoder(points, return_full=True)
 
